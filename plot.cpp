@@ -11,7 +11,6 @@
 #include <QSize>
 
 #include "plot.h"
-#include "graphwindow.h"
 
 /*
 plotData::~plotData()

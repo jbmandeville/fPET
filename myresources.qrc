@@ -1,2 +1,7 @@
-<!DOCTYPE RCC>
-<RCC version="1.0"/>
+<RCC>
+    <qresource prefix="/">
+        <file>My-Icons/dragX.png</file>
+        <file>My-Icons/dragY.png</file>
+        <file>My-Icons/rescaleGraph.png</file>
+    </qresource>
+</RCC>

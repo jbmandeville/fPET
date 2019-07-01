@@ -1,8 +1,11 @@
-#include <QCoreApplication>
+#include "simwindow.h"
+#include <QApplication>
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication a(argc, argv);
+    QApplication qt_app(argc, argv);
+    SimWindow win;
 
-    return a.exec();
+    win.show();
+    return qt_app.exec();
 }
