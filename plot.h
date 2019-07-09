@@ -148,6 +148,7 @@ public:
     inline void setYRange(QCPRange range) {_qcplot->yAxis->setRange(range); _qcplot->replot();}
     inline bool isAutoScale() {return _autoScale;}
     inline plotCurve *getThisCurvePointer() {return &_listOfCurves.last();}
+    inline int getNumberCurves() {return _listOfCurves.size();}
 
 private slots:
     void axisLabelDoubleClick(QCPAxis *axis, QCPAxis::SelectablePart part);

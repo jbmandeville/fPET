@@ -199,8 +199,6 @@ namespace utilMath
 #define SQR(a) ((a) == 0.0 ? 0.0 : (a)*(a))
 #define NMAT 3
 
-    void FFTW1D_Volume( IPoint3D dim, dcVector &volume, int iDimFFT, bool forward );
-
     Mat44 invertMat44(Mat44 matrix44 );
     bool dInvertSquareMatrix(dMatrix &dSquareMatrix );
 

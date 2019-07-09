@@ -907,9 +907,14 @@ void plotData::reScaleAxes(QCPRange *xRange, QCPRange *yRange)
         }
     }
     // expland the x and y ranges by 10% total
+    if ( xRange->lower ==  1.e10 ) xRange->lower = -10.;
+    if ( xRange->upper == -1.e10 ) xRange->upper =  10.;
     double extra = (xRange->upper - xRange->lower) * 0.05;
     xRange->lower -= extra;
     xRange->upper += extra;
+
+    if ( yRange->lower ==  1.e10 ) yRange->lower = -10.;
+    if ( yRange->upper == -1.e10 ) yRange->upper =  10.;
     extra = (yRange->upper - yRange->lower) * 0.05;
 //    qDebug() << "rescale" << yRange->lower << yRange->upper << extra;
     yRange->lower -= extra;

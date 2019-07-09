@@ -3,5 +3,7 @@
         <file>My-Icons/dragX.png</file>
         <file>My-Icons/dragY.png</file>
         <file>My-Icons/rescaleGraph.png</file>
+        <file>My-Icons/calculator.png</file>
+        <file>My-Icons/eraser.png</file>
     </qresource>
 </RCC>

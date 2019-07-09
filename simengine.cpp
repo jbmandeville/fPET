@@ -11,9 +11,18 @@ simEngine::simEngine()
 
 void simEngine::run()
 {
+    qDebug() << "simEngine::run enter";
     generatePlasmaTAC();
     generateReferenceTAC();
     generateTargetTAC();
+    qDebug() << "simEngine::run exit";
+}
+void simEngine::generateTargetTAC()
+{
+    if ( _SRTM )
+        generateTargetSRTM();
+    else
+        generateTargetFRTM();
 }
 
 void simEngine::generatePlasmaTAC()
@@ -26,10 +35,13 @@ void simEngine::generatePlasmaTAC()
     qDebug() << "simEngine::generatePlasmaTAC nTime" << nTime;
     double Cp_fast = 0.;  double Cp_slow = 0.;
     _Cp.clear();
+    double magInfusion = 0.;
+    if ( _KBol != 0. )
+        magInfusion = _magBolus * exp(1) * _tauBolus / _KBol;
     for ( int jt=0; jt<nTime; jt++)
     {
         double time = jt * _dt;
-        double plasmaInput = _magInfusion + _magBolus * qPow(time/_tauBolus,_alphaBolus) * qExp(_alphaBolus*(1.-time/_tauBolus));
+        double plasmaInput = magInfusion + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
         if ( jt != 0. )
         {
             double dCpdt_fast  = _fracFast      * plasmaInput - _kFast * Cp_fast;
@@ -67,52 +79,85 @@ void simEngine::generateReferenceTAC()
     qDebug() << "simEngine::generateReferenceTAC exit";
 }
 
-void simEngine::generateTargetTAC()
+void simEngine::generateTargetSRTM()
+{
+    // dCt_dt = K1 * Cp - k2a * Ct
+    qDebug() << "simEngine::generateTargetFRTM enter";
+
+    // Derived quantities: update tissue properties
+    _K1  = _R1 * _K1Ref;
+    _k2  = _R1 * _k2Ref;
+    double k2a = _k2 / (1. + _BP0);
+
+    double Ct=0.;
+    int nTime = _Cp.size();
+    _Ct.clear();
+    for ( int jt=0; jt<nTime; jt++)
+    {
+        int iDisplacementTime = static_cast<int>(_challengeTime / _dt);
+        bool postChallenge = (jt > iDisplacementTime);
+        if ( postChallenge && _deltaBPPercent != 0. )
+        {
+            double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
+            k2a = _k2 / (1. + BP1);
+            qDebug() << "delta_BPnd =" << _BP0 - BP1;
+        }
+        if ( jt > 0 )
+        {
+            double dCtdt = _K1 * _Cp[jt] - k2a * Ct ;
+            Ct += dCtdt * _dt;
+        }
+        _Ct.append(Ct + _fracPlasma * _Cp[jt]);
+        qDebug() << "Ct = " << _Ct.last();
+    }
+
+    // Downsample the TAC and add Noise
+    _CtBinned = downSample(_Ct);
+    addNoise(_noiseTar, _CtBinned);
+    qDebug() << "simEngine::generateTargetFRTM exit";
+}
+
+void simEngine::generateTargetFRTM()
 {
     // dCb_dt = k3 * Cf - koff * Cb = kon * Bavail * Cf - koff * Cb
     // dCf_dt = K1 * Cp + koff * Cb - (k2+k3)*Cf
-    qDebug() << "simEngine::generateTargetTAC enter";
+    qDebug() << "simEngine::generateTargetFRTM enter";
 
     // Derived quantities: update tissue properties
     _K1  = _R1 * _K1Ref;
     _k2  = _R1 * _k2Ref;
     _k3  = _BP0  * _k4;
 
-    double k3=0.;
+    double k3=_k3;
     double Cf=0.;  double Cb=0.;
     int nTime = _Cp.size();
     _Cf.clear();  _Cb.clear();  _Ct.clear();
     for ( int jt=0; jt<nTime; jt++)
     {
         int iDisplacementTime = static_cast<int>(_challengeTime / _dt);
-        bool noChallenge    = _challengeTime == 0.;
-        bool baselinePeriod = jt <= iDisplacementTime;
-        if ( noChallenge || baselinePeriod )
-            k3 = _k3;
-        else
+        bool postChallenge = (jt > iDisplacementTime);
+        if ( postChallenge && _deltaBPPercent != 0. )
         {
             double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
+            qDebug() << "delta_BPnd =" << _BP0 - BP1;
             k3 = BP1 * _k4;
         }
-        double Cp = _Cp[jt];
-        if ( jt == 0. )
-            Cf = Cb = 0.;
-        else
+        if ( jt > 0 )
         {
-            double dCfdt = _K1 * Cp + _k4 * Cb - (_k2 + _k3) * Cf;
+            double dCfdt = _K1 * _Cp[jt] + _k4 * Cb - (_k2 + k3) * Cf;
             double dCbdt = k3 * Cf - _k4 * Cb;
             Cf += dCfdt * _dt;
             Cb += dCbdt * _dt;
         }
         _Cf.append(Cf);
         _Cb.append(Cb);
-        _Ct.append(Cf + Cb + _fracPlasma * Cp);
+        _Ct.append(Cf + Cb + _fracPlasma * _Cp[jt]);
     }
 
     // Downsample the TAC and add Noise
     _CtBinned = downSample(_Ct);
     addNoise(_noiseTar, _CtBinned);
-    qDebug() << "simEngine::generateTargetTAC exit";
+    qDebug() << "simEngine::generateTargetFRTM exit";
 }
 
 dVector simEngine::downSample(dVector original)
@@ -129,6 +174,7 @@ dVector simEngine::downSample(dVector original)
         average /= static_cast<double>(_lDownSample);
         binned.append(average);
     }
+    qDebug() << "simEngine::downSample exit";
     return binned;
 }
 void simEngine::addNoise(double noiseScale, dVector &timeVector)

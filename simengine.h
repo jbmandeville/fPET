@@ -13,25 +13,25 @@ private:
     double _dt=0.1;
     int _lDownSample=10;
     // Infusion
-    double _magBolus=1.e5;
-    double _tauBolus=1.5;
-    double _alphaBolus=1.0;
-    double _magInfusion=1.e3;
+    double _magBolus=5.e5;
+    double _tauBolus=0.25;
+    double _KBol=45.;
     // Elimination
-    double _fracFast=0.95;   // fraction of elimination that is alpha
-    double _kFast=1./1.5;    // 1/T_alpha fast elimination
-    double _kSlow=1.;        // 1/T_beta  slow elimination
+    double _fracFast=0.95;   // fraction of elimination that is fast
+    double _kFast=1./1.4;    // 1/T_alpha fast elimination
+    double _kSlow=1./30.;    // 1/T_beta  slow elimination
     double _fracPlasma=0.0 ; // CBV fraction (set to 0 to ignore plasma)
     // Reference region
-    double _K1Ref=0.15;
-    double _k2Ref=1./2.;
+    double _K1Ref=1./15.;
+    double _k2Ref=1./2.5;
     // Target region: state
     double _k4=1./10.;
     double _R1=1.;
     double _BP0=4.;     // BP = k3/koff = kon*Bavail0/koff
     // Challenge
     double _challengeTime=40.;
-    double _deltaBPPercent=10.;  // deltaBPnd in %
+    double _deltaBPPercent=0.;  // deltaBPnd in %
+    bool _SRTM = false;  // true if 1/k4 is set to zero (k4 = infinity)
 
     // derived quantities //////////////////////////
     double _K1;    // K1 = R1 * K1_ref
@@ -63,15 +63,18 @@ public:
     void generatePlasmaTAC();
     void generateReferenceTAC();
     void generateTargetTAC();
+    void generateTargetSRTM();
+    void generateTargetFRTM();
 
     // setters
+    inline void setSRTM()                     {_SRTM = true;}
+    inline void setFRTM()                     {_SRTM = false;}
     inline void setDuration(double value)     {_duration = value;}
     inline void setStepSize(double value)     {_dt = value;}
     inline void setDownSampling(int lValue)   {_lDownSample = lValue;}
     inline void setMagBolus(double value)     {_magBolus = value;}
     inline void setTauBolus(double value)     {_tauBolus = value;}
-    inline void setAlphaBolus(double value)   {_alphaBolus = value;}
-    inline void setMagInfusion(double value)  {_magInfusion = value;}
+    inline void setKBol(double value)         {_KBol = value;}
     inline void setFastFraction(double value) {_fracFast = value;}
     inline void setKFastElim(double value)    {_kFast = value;}
     inline void setKSlowElim(double value)    {_kSlow = value;}
@@ -94,18 +97,18 @@ public:
     inline void setChallengeMag(double value) {_deltaBPPercent = value;}
 
     // getters
+    inline bool getSRTM()           {return _SRTM;}
     inline double getDuration()     {return _duration;}
     inline double getStepSize()     {return _dt;}
     inline int getDownSampling()    {return _lDownSample;}
     inline double getMagBolus()     {return _magBolus;}
     inline double getTauBolus()     {return _tauBolus;}
-    inline double getAlphaBolus()   {return _alphaBolus;}
-    inline double getMagInfusion()  {return _magInfusion;}
+    inline double getKBol()  {return _KBol;}
     inline double getFastFraction() {return _fracFast;}
     inline double getKFastElim()    {return _kFast;}
     inline double getKSlowElim()    {return _kSlow;}
     inline double getTauFastElim()  {return 1./_kFast;}
-    inline double getTauSlowElim()  {return 1./_kFast;}
+    inline double getTauSlowElim()  {return 1./_kSlow;}
     inline double getK1Ref()        {return _K1Ref;}
     inline double getk2Ref()        {return _k2Ref;}
     inline double getTau1Ref()      {return 1./_K1Ref;}
@@ -117,6 +120,7 @@ public:
     inline double getK1()           {return _K1;}
     inline double getk2()           {return _k2;}
     inline double getk3()           {return _k3;}
+    inline double getk2a()          {return _k2/(1.+_BP0);}
     inline double getNoiseRef()     {return _noiseRef;}
     inline double getNoiseTar()     {return _noiseTar;}
     inline double getChallengeTime(){return _challengeTime;}
