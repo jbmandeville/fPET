@@ -338,6 +338,7 @@ dPoint2D PETRTM::getTau2RefInCurrentCondition()
 
 void PETRTM::setTau2Ref(int iRun, double tau2Ref)
 {
+    qDebug() << "*** changed tau2Ref from" << _tau2RefSRTM[iRun] << "to" << tau2Ref;
     if ( isRTM2() )
     {   // set tau2Ref for the specified run
         if ( isSRTM() )

@@ -12,10 +12,12 @@ SimWindow::SimWindow()
     _tabTimeSpace = new QTabWidget();
     createSetupPage();
     createTargetPage();
-    createDependenciesPage();
+    createVersusBPndPage();
+    createVersusTimePage();
     _tabTimeSpace->addTab(_setupPage, tr("setup"));
     _tabTimeSpace->addTab(_targetPage, tr("target"));
-    _tabTimeSpace->addTab(_dependenciesPage, tr("dependencies"));
+    _tabTimeSpace->addTab(_vsBPndPage, tr("vs. BPnd"));
+    _tabTimeSpace->addTab(_vsTimePage, tr("vs. time"));
 
     QWidget *centralWidget = new QWidget(this);
     this->setCentralWidget( centralWidget );
@@ -540,9 +542,9 @@ void SimWindow::createTargetPage()
     qDebug() << "SimWindow::createTargetPage exit";
 }
 
-void SimWindow::createDependenciesPage()
+void SimWindow::createVersusBPndPage()
 {
-    qDebug() << "SimWindow::createDependenciesPage enter";
+    qDebug() << "SimWindow::createVersusBPndPage enter";
     // For RTM3:
     // 1) BPnd_err vs. BPnd
     // 2) Challenge error vs. BPnd
@@ -553,11 +555,11 @@ void SimWindow::createDependenciesPage()
     // 2) Challenge error vs. BPnd
     // 3) Tau2Ref (no bias) vs. BPnd (requires root finding)
 
-    _dependenciesPage = new QWidget();
+    _vsBPndPage = new QWidget();
 
-    _errBPndPlot  = new plotData(4);
-    _errChallPlot = new plotData(5);
-    _tau2RefPlot   = new plotData(6);
+    _errBPndPlot     = new plotData(4);
+    _errChallPlot    = new plotData(5);
+    _tau2RefPlot     = new plotData(6);
     auto *plotLayout = new QVBoxLayout();
     plotLayout->addWidget(_errBPndPlot->getPlotSurface());
     plotLayout->addWidget(_errChallPlot->getPlotSurface());
@@ -591,30 +593,47 @@ void SimWindow::createDependenciesPage()
     BPndGroupBox->setLayout(BPndLayout);
     BPndLayout->setSpacing(0);
 
-    auto *calcGroupBox = new QGroupBox("Calculate and clear curves");
+    auto *calcGroupBox = new QGroupBox("Calculate or clear curves");
     QLabel *calcLabel  = new QLabel("Calculate curves");
     QLabel *clearLabel = new QLabel("Clear curves");
-    _calculateCurves   = new QPushButton();
+    _calculateBPndCurves   = new QPushButton();
     QPixmap pixmapCalculate(":/My-Icons/calculator.png");
     QIcon calculatorIcon(pixmapCalculate);
-    _calculateCurves->setIcon(calculatorIcon);
-    _clearCurves  = new QPushButton();
+    _calculateBPndCurves->setIcon(calculatorIcon);
+    _clearBPndCurves  = new QPushButton();
     QPixmap eraser(":/My-Icons/eraser.png");
     QIcon eraserIcon(eraser);
-    _clearCurves->setIcon(eraserIcon);
+    _clearBPndCurves->setIcon(eraserIcon);
     auto *calcLayout = new QGridLayout();
     calcLayout->addWidget(calcLabel,0,0);
-    calcLayout->addWidget(_calculateCurves,0,1);
+    calcLayout->addWidget(_calculateBPndCurves,0,1);
     calcLayout->addWidget(clearLabel,1,0);
-    calcLayout->addWidget(_clearCurves,1,1);
+    calcLayout->addWidget(_clearBPndCurves,1,1);
     calcGroupBox->setLayout(calcLayout);
     calcLayout->setSpacing(0);
-    connect(_calculateCurves, SIGNAL(pressed()), this, SLOT(calculateBPndCurves()));
-    connect(_clearCurves, SIGNAL(pressed()),     this, SLOT(clearBPndCurves()));
+    connect(_calculateBPndCurves, SIGNAL(pressed()), this, SLOT(calculateBPndCurves()));
+    connect(_clearBPndCurves, SIGNAL(pressed()),     this, SLOT(clearBPndCurves()));
+
+    _checkBoxBPndErrGraph  = new QCheckBox("BPnd error");
+    _checkBoxChallErrGraph = new QCheckBox("Challenge error");
+    _checkBoxTau2RefGraph  = new QCheckBox("Tau2Ref");
+    _checkBoxBPndErrGraph->setChecked(true);
+    _checkBoxChallErrGraph->setChecked(false);
+    _checkBoxTau2RefGraph->setChecked(true);
+    auto *checkGroupBox = new QGroupBox("Show or hide graphs");
+    auto *checkLayout = new QVBoxLayout();
+    checkLayout->addWidget(_checkBoxBPndErrGraph);
+    checkLayout->addWidget(_checkBoxChallErrGraph);
+    checkLayout->addWidget(_checkBoxTau2RefGraph);
+    checkGroupBox->setLayout(checkLayout);
+    connect(_checkBoxBPndErrGraph,  SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
+    connect(_checkBoxChallErrGraph, SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
+    connect(_checkBoxTau2RefGraph,  SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
 
     auto *rightLayout = new QVBoxLayout();
     rightLayout->addWidget(BPndGroupBox);
     rightLayout->addWidget(calcGroupBox);
+    rightLayout->addWidget(checkGroupBox);
 
     QHBoxLayout *fullLayout = new QHBoxLayout();
     fullLayout->addLayout(plotLayout);
@@ -656,9 +675,108 @@ void SimWindow::createDependenciesPage()
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _tau2RefPlot,  SLOT(autoScale(bool)));
 
     clearBPndCurves();
+    changedVersusBPndGraphs();
 
-    _dependenciesPage->setLayout(fullLayout);
+    _vsBPndPage->setLayout(fullLayout);
     qDebug() << "SimWindow::createTargetPage exit";
+}
+
+void SimWindow::createVersusTimePage()
+{
+    qDebug() << "SimWindow::createVersusTimePage enter";
+    // 1) BPnd_err vs. time
+    // 2) Challenge error vs. time
+
+    _vsTimePage = new QWidget();
+
+    _errBPndOrChallVsTimePlot = new plotData(6);
+    auto *plotLayout = new QVBoxLayout();
+    plotLayout->addWidget(_errBPndOrChallVsTimePlot->getPlotSurface());
+    QString numberString;
+    int editTextSize=80;
+
+    auto *timeGroupBox    = new QGroupBox("challenge time lower & upper limits");
+    QLabel *timeLowLabel  = new QLabel("lowest time");
+    QLabel *timeHighLabel = new QLabel("highest time");
+    _timeLow   = new QLineEdit();
+    _timeHigh  = new QLineEdit();
+    _timeLow->setFixedWidth(editTextSize);
+    _timeHigh->setFixedWidth(editTextSize);
+    _timeLow->setText(numberString.setNum(_timeLowValue));
+    _timeHigh->setText(numberString.setNum(_timeHighValue));
+    connect(_timeLow,   SIGNAL(editingFinished()), this, SLOT(changedTimeLow()));
+    connect(_timeHigh,  SIGNAL(editingFinished()), this, SLOT(changedTimeHigh()));
+    auto *timeLayout = new QGridLayout();
+    timeLayout->addWidget(timeLowLabel,0,0);
+    timeLayout->addWidget(_timeLow,0,1);
+    timeLayout->addWidget(timeHighLabel,1,0);
+    timeLayout->addWidget(_timeHigh,1,1);
+    timeGroupBox->setLayout(timeLayout);
+    timeLayout->setSpacing(0);
+
+    auto *calcGroupBox = new QGroupBox("Calculate or clear curves");
+    QLabel *calcLabel  = new QLabel("Calculate curves");
+    QLabel *clearLabel = new QLabel("Clear curves");
+    _calculateTimeCurves   = new QPushButton();
+    QPixmap pixmapCalculate(":/My-Icons/calculator.png");
+    QIcon calculatorIcon(pixmapCalculate);
+    _calculateTimeCurves->setIcon(calculatorIcon);
+    _clearTimeCurves  = new QPushButton();
+    QPixmap eraser(":/My-Icons/eraser.png");
+    QIcon eraserIcon(eraser);
+    _clearTimeCurves->setIcon(eraserIcon);
+    auto *calcLayout = new QGridLayout();
+    calcLayout->addWidget(calcLabel,0,0);
+    calcLayout->addWidget(_calculateTimeCurves,0,1);
+    calcLayout->addWidget(clearLabel,1,0);
+    calcLayout->addWidget(_clearTimeCurves,1,1);
+    calcGroupBox->setLayout(calcLayout);
+    calcLayout->setSpacing(0);
+    connect(_calculateTimeCurves, SIGNAL(pressed()), this, SLOT(calculateTimeCurves()));
+    connect(_clearTimeCurves, SIGNAL(pressed()),     this, SLOT(clearTimeCurves()));
+
+    auto *rightLayout = new QVBoxLayout();
+    rightLayout->addWidget(timeGroupBox);
+    rightLayout->addWidget(calcGroupBox);
+
+    QHBoxLayout *fullLayout = new QHBoxLayout();
+    fullLayout->addLayout(plotLayout);
+    fullLayout->addLayout(rightLayout);
+    fullLayout->setStretch(0,100);
+    fullLayout->setStretch(1,1);
+
+    /////////////// Plotting tool bars //////////////////////
+    const QIcon *dragX = new QIcon(":/My-Icons/dragX.png");
+    auto *dragXAction = new QAction(*dragX, tr("drag/zoom X axis"), this);
+    const QIcon *dragY = new QIcon(":/My-Icons/dragY.png");
+    auto *dragYAction = new QAction(*dragY, tr("drag/zoom Y axis"), this);
+    const QIcon *rescaleXY = new QIcon(":/My-Icons/rescaleGraph.png");
+    auto *rescaleXYAction = new QAction(*rescaleXY, tr("Auto-scale X and Y ranges"), this);
+    dragXAction->setCheckable(true);
+    dragYAction->setCheckable(true);
+    rescaleXYAction->setCheckable(true);
+    rescaleXYAction->setChecked(true);
+    QActionGroup *graphButtons = new QActionGroup(this);
+    graphButtons->addAction(dragXAction);
+    graphButtons->addAction(dragYAction);
+    graphButtons->addAction(rescaleXYAction);
+
+    QToolBar *graphToolBar = new QToolBar("time tool bar");
+    graphToolBar->addAction(dragXAction);
+    graphToolBar->addAction(dragYAction);
+    graphToolBar->addAction(rescaleXYAction);
+    fullLayout->setMenuBar(graphToolBar);
+
+    // Make toolbar connections to the main plot, not the basis plot
+    connect(dragXAction,     SIGNAL(triggered(bool)), _errBPndOrChallVsTimePlot,  SLOT(setXZoom()));
+    connect(dragYAction,     SIGNAL(triggered(bool)), _errBPndOrChallVsTimePlot,  SLOT(setYZoom()));
+    connect(rescaleXYAction, SIGNAL(triggered(bool)), _errBPndOrChallVsTimePlot,  SLOT(autoScale(bool)));
+
+    clearTimeCurves();
+
+    _vsTimePage->setLayout(fullLayout);
+    qDebug() << "SimWindow::createTargetPage exit";
+
 }
 
 void SimWindow::changedGraphSizes(int iSelection)
@@ -758,10 +876,13 @@ void SimWindow::updateReferenceGraph()
         int indexChallenge = _PETRTM.getEventIndex('c');
         _PETRTM.setChallengeShape(indexChallenge,Challenge_Sigmoid);
         _PETRTM.setChallengeTau(indexChallenge,1.);
-        _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
-        _PETRTM.setTau2RefSRTM(0,_simulator.getTau2Ref());
-        _PETRTM.setTau2RefFRTM(0,_simulator.getTau2Ref());
-        _PETRTM.setTau4(0,_simulator.getTau4());
+        if ( firstTime )
+        {
+            _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
+            _PETRTM.setTau2RefSRTM(0,_simulator.getTau2Ref());
+            _PETRTM.setTau2RefFRTM(0,_simulator.getTau2Ref());
+            _PETRTM.setTau4(0,_simulator.getTau4());
+        }
         firstTime = false;
     }
     _PETRTM.setReferenceRegion(refRegion);
@@ -904,6 +1025,16 @@ void SimWindow::updateTargetGraph()
     for (int jt=0; jt<nTime; jt++)
         yTAC[jt]  = _simulator.getCrDown(jt);
     _targetPlot->setData(xTime,yTAC);
+
+    // add FRTM convolution
+    if ( _PETRTM.isFRTM() )
+    {
+        _targetPlot->addCurve(0,"convolution");
+        _targetPlot->setColor(Qt::green);
+        for (int jt=0; jt<nTime; jt++)
+            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
+        _targetPlot->setData(xTime,yTAC);
+    }
 
     _targetPlot->conclude(0,true);
     _targetPlot->plotDataAndFit(true);
@@ -1198,6 +1329,8 @@ void SimWindow::changedChallengeTime()
     if ( ok )
     {
         _simulator.setChallengeTime(value);
+        int indexChallenge = _PETRTM.getEventIndex('c');
+        _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
         updateAllGraphs();
     }
     else
@@ -1274,6 +1407,8 @@ void SimWindow::changedCheckBoxChallenge(bool state)
     }
     _errorChallengeLabel->setVisible(state);
     _errorChallenge->setVisible(state);
+    _checkBoxChallErrGraph->setChecked(state);
+    clearTimeCurves();
     _PETRTM.setPrepared(false);
     updateAllGraphs();
 }
@@ -1359,7 +1494,41 @@ void SimWindow::changedBPndStep()
     else
         _BPndStep->setText(stringEntered.setNum(_BPndStepValue));
 }
-
+void SimWindow::changedTimeLow()
+{
+    QString stringEntered = _timeLow->text();
+    bool ok;
+    double value = stringEntered.toDouble(&ok);
+    if ( ok )
+        _timeLowValue = value;
+    else
+        _timeLow->setText(stringEntered.setNum(_timeLowValue));
+}
+void SimWindow::changedTimeHigh()
+{
+    QString stringEntered = _timeHigh->text();
+    bool ok;
+    double value = stringEntered.toDouble(&ok);
+    if ( ok )
+        _timeHighValue = value;
+    else
+        _timeHigh->setText(stringEntered.setNum(_timeHighValue));
+}
+void SimWindow::changedVersusBPndGraphs()
+{
+    if ( _checkBoxBPndErrGraph->isChecked() )
+        _errBPndPlot->getPlotSurface()->setVisible(true);
+    else
+        _errBPndPlot->getPlotSurface()->setVisible(false);
+    if ( _checkBoxChallErrGraph->isChecked() )
+        _errChallPlot->getPlotSurface()->setVisible(true);
+    else
+        _errChallPlot->getPlotSurface()->setVisible(false);
+    if ( _checkBoxTau2RefGraph->isChecked() )
+        _tau2RefPlot->getPlotSurface()->setVisible(true);
+    else
+        _tau2RefPlot->getPlotSurface()->setVisible(false);
+}
 void SimWindow::clearBPndCurves()
 {
     QCPRange xRange;
@@ -1367,21 +1536,18 @@ void SimWindow::clearBPndCurves()
     xRange.upper = _BPndHighValue + _BPndStepValue;
 
     _errBPndPlot->init();
-//    _errBPndPlot->setLegendOn(true);
     _errBPndPlot->setLabelXAxis("BPnd");
     _errBPndPlot->setLabelYAxis("BPnd % err");
     _errBPndPlot->plotDataAndFit(true);
     _errBPndPlot->setXRange(xRange);
 
     _errChallPlot->init();
-//    _errChallPlot->setLegendOn(true);
     _errChallPlot->setLabelXAxis("BPnd");
     _errChallPlot->setLabelYAxis("dBPnd abs err");
     _errChallPlot->plotDataAndFit(true);
     _errChallPlot->setXRange(xRange);
 
     _tau2RefPlot->init();
-//    _tau2RefPlot->setLegendOn(true);
     _tau2RefPlot->setLabelXAxis("BPnd");
     _tau2RefPlot->setLabelYAxis("Tau2'");
     _tau2RefPlot->plotDataAndFit(true);
@@ -1406,26 +1572,27 @@ void SimWindow::calculateBPndCurves()
     _tau2RefPlot->addCurve(0,"error_Tau2Ref");
     _tau2RefPlot->setPointSize(5);
     _tau2RefPlot->setColor(colors[iColor]);
+    if ( _PETRTM.isRTM2() )
+        _tau2RefPlot->setPointStyle(QCPScatterStyle::ssCross);
 
-    dVector xVector;
-    for (double BP0=_BPndLowValue; BP0<_BPndHighValue; BP0 += _BPndStepValue)
-        xVector.append(BP0);
-    dVector errBPnd, errChall, tau2Ref, errBPndRTM2, errChallRTM2;
-    for (double BP0=_BPndLowValue; BP0<_BPndHighValue; BP0 += _BPndStepValue)
+    dVector xVector, errBPnd, errChall, tau2Ref, errBPndRTM2, errChallRTM2;
+    for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
     {
-        QString numberString;  numberString.setNum(BP0);
-        _BPnd->setText(numberString);
-        changedBPND();
+        double saveBPnd = _simulator.getBP0(); // BPnd will be changed, so save the value for later restoration
+
+        xVector.append(BP0);
+        QString numberString;
+
+        // Change BPnd and run the simulation
+        _BPnd->setText(numberString.setNum(BP0));  changedBPND();
 
         double truth = _simulator.getBP0();
         double guess = _PETRTM.getBP0InRun(0);
         errBPnd.append(percentageError(BP0,guess));
-        qDebug() << "BPnd err = " << percentageError(BP0,guess) << guess << BP0;
 
         truth = _simulator.getChallengeMag();
         guess = getChallengeMagFromAnalysis();
         errChall.append(guess - truth);
-        qDebug() << "challenge err = " << guess - truth << guess << truth;
 
         if ( !_PETRTM.isRTM2() )
         {
@@ -1435,9 +1602,10 @@ void SimWindow::calculateBPndCurves()
         }
         else
         {
+            double saveTau2Ref = _PETRTM.getTau2RefInRun(0); // tau2Ref will be changed, so save the value for later restoration
             double bestTau2Ref = bestTau2RefForRTM2();
             tau2Ref.append(bestTau2Ref);
-            numberString.setNum(bestTau2Ref);  _tau2RefAnalysis->setText(numberString);  changedTau2RefAnalysis();
+            _tau2RefAnalysis->setText(numberString.setNum(bestTau2Ref));  changedTau2RefAnalysis();
             // Update error vectors for optimized RTM2
             truth = _simulator.getBP0();
             guess = _PETRTM.getBP0InRun(0);
@@ -1445,7 +1613,12 @@ void SimWindow::calculateBPndCurves()
             truth = _simulator.getChallengeMag();
             guess = getChallengeMagFromAnalysis();
             errChallRTM2.append(guess - truth);
+            // restore the value of tau2Ref
+            _tau2RefAnalysis->setText(numberString.setNum(saveTau2Ref));  changedTau2RefAnalysis();
         }
+
+        // restore the value of BPnd
+        _BPnd->setText(numberString.setNum(saveBPnd));  changedBPND();
     }
     _errBPndPlot->setData(xVector,errBPnd);
     _errChallPlot->setData(xVector,errChall);
@@ -1454,11 +1627,13 @@ void SimWindow::calculateBPndCurves()
     if ( _PETRTM.isRTM2() )
     { // add a new curves to the two error plots
         _errBPndPlot->addCurve(0,"error_BPnd");
-        _errBPndPlot->setPointSize(1);
+        _errBPndPlot->setPointSize(5);
+        _errBPndPlot->setPointStyle(QCPScatterStyle::ssCross);
         _errBPndPlot->setColor(colors[iColor]);
         _errBPndPlot->setData(xVector,errBPndRTM2);
         _errChallPlot->addCurve(0,"error_Challenge");
-        _errChallPlot->setPointSize(1);
+        _errChallPlot->setPointSize(5);
+        _errChallPlot->setPointStyle(QCPScatterStyle::ssCross);
         _errChallPlot->setColor(colors[iColor]);
         _errChallPlot->setData(xVector,errChallRTM2);
     }
@@ -1484,7 +1659,7 @@ double SimWindow::bestTau2RefForRTM2()
         while ( error > 0. )
         {
             tau2Ref -= 0.1;
-            numberString.setNum(tau2Ref);  _tau2RefAnalysis->setText(numberString);  changedTau2RefAnalysis();
+            _tau2RefAnalysis->setText(numberString.setNum(tau2Ref));  changedTau2RefAnalysis();
             estBP0 = _PETRTM.getBP0InRun(0);
             error = estBP0 - trueBP0;
         }
@@ -1494,10 +1669,71 @@ double SimWindow::bestTau2RefForRTM2()
         while ( error < 0. )
         {
             tau2Ref += 0.1;
-            numberString.setNum(tau2Ref);  _tau2RefAnalysis->setText(numberString);  changedTau2RefAnalysis();
+            _tau2RefAnalysis->setText(numberString.setNum(tau2Ref));  changedTau2RefAnalysis();
             estBP0 = _PETRTM.getBP0InRun(0);
             error = estBP0 - trueBP0;
         }
     }
     return tau2Ref;
+}
+
+void SimWindow::clearTimeCurves()
+{
+    QCPRange xRange;
+    xRange.lower = _timeLowValue;
+    xRange.upper = _timeHighValue;
+
+    _errBPndOrChallVsTimePlot->init();
+    _errBPndOrChallVsTimePlot->setLabelXAxis("time");
+    if ( _includeChallenge->isChecked() )
+        _errBPndOrChallVsTimePlot->setLabelYAxis("Challenge err (abs)");
+    else
+        _errBPndOrChallVsTimePlot->setLabelYAxis("BPnd % err");
+    _errBPndOrChallVsTimePlot->plotDataAndFit(true);
+    _errBPndOrChallVsTimePlot->setXRange(xRange);
+}
+void SimWindow::calculateTimeCurves()
+{
+    QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
+                         Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
+    int nCurves = _errBPndOrChallVsTimePlot->getNumberCurves();
+    int iColor  = nCurves%10;
+
+    _errBPndOrChallVsTimePlot->addCurve(0,"error_BPnd");
+    _errBPndOrChallVsTimePlot->setPointSize(5);
+    _errBPndOrChallVsTimePlot->setColor(colors[iColor]);
+
+    dVector xVector, errVector;
+    double dt = _simulator.getBinResolution();
+    double saveTimeDuration  = _simulator.getDuration();
+    double saveChallengeTime = _simulator.getChallengeTime();
+    for (double time=_timeLowValue; time<=_timeHighValue; time += dt)
+    {
+        xVector.append(time);
+        QString numberString;  numberString.setNum(time);
+        if ( _includeChallenge->isChecked() )
+        { // calculate the error in the challenge magnitude
+            _challengeTime->setText(numberString);  changedChallengeTime();
+            double truth = _simulator.getChallengeMag();
+            double guess = getChallengeMagFromAnalysis();
+            errVector.append(guess - truth);
+        }
+        else
+        { // calculate the percent error in BPnd
+            _timeDuration->setText(numberString);  changedTimeDuration();
+            double truth = _simulator.getBP0();
+            double guess = _PETRTM.getBP0InRun(0);
+            errVector.append(percentageError(truth,guess));
+            qDebug() << "change time to" << numberString << "with result" << guess;
+        }
+    }
+    // restore the time duration and challenge time
+    QString numberString;
+    _timeDuration->setText(numberString.setNum(saveTimeDuration));
+    _challengeTime->setText(numberString.setNum(saveChallengeTime));
+    changedChallengeTime();  // this will update the simulation and also the challenge time in analysis
+
+    _errBPndOrChallVsTimePlot->setData(xVector,errVector);
+    _errBPndOrChallVsTimePlot->conclude(0,true);
+    _errBPndOrChallVsTimePlot->plotDataAndFit(true);
 }

@@ -101,6 +101,7 @@ public:
     inline double getDuration()     {return _duration;}
     inline double getStepSize()     {return _dt;}
     inline int getDownSampling()    {return _lDownSample;}
+    inline double getBinResolution(){return _dt*_lDownSample;}
     inline double getMagBolus()     {return _magBolus;}
     inline double getTauBolus()     {return _tauBolus;}
     inline double getKBol()  {return _KBol;}

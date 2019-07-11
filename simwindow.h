@@ -17,23 +17,30 @@ private:
     PETRTM _PETRTM;
     QStringList _dataColumnNames;
     dMatrix _dataTable;
-    double _BPndLowValue  = 0.5;
+    double _BPndLowValue  = 1.0;
     double _BPndHighValue = 5.0;
     double _BPndStepValue = 0.5;
+    double _timeLowValue  = 20.;
+    double _timeHighValue = 80.;
 
     QTabWidget *_tabTimeSpace;
     QWidget *_setupPage;
     QWidget *_targetPage;
-    QWidget *_dependenciesPage;
+    QWidget *_vsBPndPage;
+    QWidget *_vsTimePage;
 
     // plots
     plotData *_plasmaPlot;   // setup page
     plotData *_RRPlot;       // setup page
+
     plotData *_basisPlot;    // target page
     plotData *_targetPlot;   // target page
-    plotData *_errBPndPlot;  // dependencies page
-    plotData *_errChallPlot; // dependencies page
-    plotData *_tau2RefPlot;  // dependencies page
+
+    plotData *_errBPndPlot;  // vsBPnd page
+    plotData *_errChallPlot; // vsBPnd page
+    plotData *_tau2RefPlot;  // vsBPnd page
+
+    plotData *_errBPndOrChallVsTimePlot;
 
     // setup page
 
@@ -89,17 +96,26 @@ private:
     QLabel *_errorChallenge;
     QLabel *_errorChallengeLabel;
 
-    // dependencies page
+    // vsBPnd page
     QLineEdit *_BPndLow;
     QLineEdit *_BPndHigh;
     QLineEdit *_BPndStep;
+    QPushButton *_calculateBPndCurves;
+    QPushButton *_clearBPndCurves;
+    QCheckBox *_checkBoxBPndErrGraph;
+    QCheckBox *_checkBoxChallErrGraph;
+    QCheckBox *_checkBoxTau2RefGraph;
 
-    QPushButton *_calculateCurves;
-    QPushButton *_clearCurves;
+    // vsTime page
+    QLineEdit *_timeLow;
+    QLineEdit *_timeHigh;
+    QPushButton *_calculateTimeCurves;
+    QPushButton *_clearTimeCurves;
 
     void createSetupPage();
     void createTargetPage();
-    void createDependenciesPage();
+    void createVersusBPndPage();
+    void createVersusTimePage();
 
     void updatePlasmaGraph();
     void updateReferenceGraph();
@@ -156,7 +172,12 @@ private slots:
     void changedBPndStep();
     void calculateBPndCurves();
     void clearBPndCurves();
+    void changedVersusBPndGraphs();
 
+    void changedTimeLow();
+    void changedTimeHigh();
+    void calculateTimeCurves();
+    void clearTimeCurves();
 };
 
 #endif // SIMWINDOW_H
