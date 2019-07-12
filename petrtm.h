@@ -130,6 +130,7 @@ public:
     void prepare();
     void resetAndCalculateFRTMConvolution(bool calculateConvolution);
 
+    void fitData(dMatrix timeSeriesVector);
     void fitData(dMatrix timeSeriesVector, dMatrix &yFit);
     void fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
     void fitDataByGLM(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);

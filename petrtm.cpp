@@ -171,7 +171,6 @@ dPoint2D PETRTM::getBPndInCurrentCondition()
 {
     dPoint2D BP;  BP.x = BP.y = 0.;
 
-    qDebug() << "PETRTM::getBPndInCurrentCondition enter";
     // updateConditions();
 
     int iCondition = getCurrentCondition();
@@ -186,7 +185,6 @@ dPoint2D PETRTM::getBPndInCurrentCondition()
         double k2=par.x;   double k2Err2=par.y;
         double k2a=0.;  double k2aErr2=0.;  double deltak2a = 0.;  double deltak2aErr2 = 0.;
 
-        qDebug() << "PETRTM::getBPndInCurrentCondition type" << iCoeff << _basisShape[iCoeff];
         if ( iCoeff >=0 && _basisShape[iCoeff] == Type_k2a )
         {
             k2a     = getBeta(iCoeff);
@@ -338,7 +336,6 @@ dPoint2D PETRTM::getTau2RefInCurrentCondition()
 
 void PETRTM::setTau2Ref(int iRun, double tau2Ref)
 {
-    qDebug() << "*** changed tau2Ref from" << _tau2RefSRTM[iRun] << "to" << tau2Ref;
     if ( isRTM2() )
     {   // set tau2Ref for the specified run
         if ( isSRTM() )
@@ -429,13 +426,9 @@ dPoint2D PETRTM::getR1InRun(int iRun)
 
 dPoint2D PETRTM::getk2InRun(int iRun)
 {
-    qDebug() << "PETRTM::getk2InRun enter" << iRun;
     dPoint2D k2;  k2.x = k2.y = 0.; // save value and error in x,y
-    qDebug() << "PETRTM::getk2InRun size" << _k2EventCoefficient.size();
-    qDebug() << "PETRTM::getk2InRun index" << _k2EventCoefficient[iRun] << _k2EventID[iRun];
     k2.x = getBeta(_k2EventCoefficient[iRun]);
     k2.y = getSEM(_k2EventCoefficient[iRun]);
-    qDebug() << "PETRTM::getk2InRun exit" << k2.x;
     return k2;
 }
 
@@ -612,7 +605,6 @@ void PETRTM::setReferenceRegionFromTableColumn(int iColumn)
 
 void PETRTM::setReferenceRegion(dMatrix timeBins, dMatrix referenceRegionRaw)
 {  // set the raw and fit version of the reference region
-    qDebug() << "PETRTM::setReferenceRegion enter";
     int nRuns = referenceRegionRaw.size();
     setNumberRuns(nRuns);
     for (int jRun=0; jRun<nRuns; jRun++)
@@ -624,22 +616,18 @@ void PETRTM::setReferenceRegion(dMatrix timeBins, dMatrix referenceRegionRaw)
     updateReferenceRegion();
     setPrepared(false);
     _referenceRegionIsDefined = true;
-    qDebug() << "PETRTM::setReferenceRegion exit";
 }
 
 void PETRTM::setReferenceRegion(dMatrix referenceRegionRaw)
 {  // set the raw and fit version of the reference region
-    qDebug() << "PETRTM::setReferenceRegion enter";
     _refRegionRaw = referenceRegionRaw;
     updateReferenceRegion();
     setPrepared(false);
     _referenceRegionIsDefined = true;
-    qDebug() << "PETRTM::setReferenceRegion exit";
 }
 
 void PETRTM::updateReferenceRegion()
 {
-    qDebug() << "PETRTM::updateReferenceRegion 1";
     _refRegion = _refRegionRaw;
     if ( _smoothingScale != 0. )
         fitLoessCurve(_refRegion);
@@ -954,7 +942,6 @@ void PETRTM::setNumberRuns(int nFiles)
         _k2aEventID.fill('A',_nRuns);
         _dCrdtEventID.fill('v',_nRuns);
         _R1EventCoefficient.resize(_nRuns);
-        qDebug() << "resize _k2EventCoefficient";
         _k2EventCoefficient.resize(_nRuns);
         _k2aEventCoefficient.resize(_nRuns);
         _dCrdtEventCoefficient.resize(_nRuns);
@@ -1483,16 +1470,17 @@ void PETRTM::setTimePointsInRun(int iRun, int nTime)
 
 void PETRTM::prepare()
 {
-    qDebug() << "PETRTM::prepare enter";
     createAllBasisFunctions();
-    qDebug() << "PETRTM::prepare 1";
     calculatePseudoInverse();
-    qDebug() << "PETRTM::prepare 2" ;
     if ( ! (_modelRTM == RTM_SRTM2_R1 || _modelRTM == RTM_rFRTM2_R1) )
         defineConditions(getConditionString());
-    qDebug() << "PETRTM::prepare 3";
     setPrepared(true);
-    qDebug() << "PETRTM::prepare exit";
+}
+
+void PETRTM::fitData(dMatrix timeSeriesVector)
+{ // convenience function when yFit can be discarded (e.g., want access to beta values)
+    dMatrix yFit = timeSeriesVector;  // resize to correct dimensions
+    fitData(timeSeriesVector, yFit);
 }
 
 void PETRTM::fitData(dMatrix timeSeriesVector, dMatrix &yFit)
@@ -1831,43 +1819,34 @@ void PETRTM::setWeightsInRun(int iRun)
 
 bool PETRTM::isValidID(int iRun, int iType, QChar eventID)
 {
-    qDebug() << "isValidID enter" << iType << eventID;
     bool valid = true;
     valid &= getEventIndex(eventID) >= 0;
-    qDebug() << "isValidID 1" << valid;
     if ( iType == Type_R1 && (_modelRTM == RTM_rFRTM2 || _modelRTM == RTM_SRTM2) )
         valid = false;
     else if ( iType == Type_dCrdt && !_dCrdtIncluded )
         valid = false;
-    qDebug() << "isValidID 2" << valid;
     // make sure the reference region is defined for basis functions that need it
     if ( iType == Type_R1 || iType == Type_k2 || iType == Type_dCrdt )
     {
-        qDebug() << "isValidID size1" << _refRegionRaw.size() << _nRuns << valid;
         valid &= _refRegionRaw.size() == _nRuns;
-        qDebug() << "isValidID size2" << _refRegionRaw[iRun].size() << _nTimePerRun[iRun] << valid;
         if ( valid ) valid &= _refRegionRaw[iRun].size() == _nTimePerRun[iRun];
-        qDebug() << "isValidID size3" << valid;
         if ( valid )
         {
             bool nonZero = false;
             for (int jt=0; jt<_nTimePerRun[iRun]; jt++)
                 nonZero |= _refRegionRaw[iRun][jt] != 0.;
             valid &= nonZero;
-            qDebug() << "isValidID nonZero" << nonZero;
         }
 //        if ( iType == Type_dCrdt )
 //            valid &= _tau4[iRun] != 0.;
     }
     else if ( iType == Type_k2a && (_modelRTM == RTM_SRTM2_R1 || _modelRTM == RTM_rFRTM2_R1) )
         valid = false;
-    qDebug() << "isValidID exit" << valid;
     return valid;
 };
 
 int PETRTM::countEvents()
 {
-    qDebug() << "PETRTM::countEvents enter" << getNumberCoefficients();
     // Count events
     _basisID.resize(0);
     _basisShape.resize(0);
@@ -1876,21 +1855,12 @@ int PETRTM::countEvents()
     // e.g., an ID cannot be a k2 and k2a event in different runs
     for ( int jRun=0; jRun<_nRuns; jRun++ )
     {
-        qDebug() << "event IDs for run" << jRun << "are" << _k2EventID[jRun] << _k2aEventID[jRun] << _R1EventID[jRun];
-        qDebug() << "isValid" <<
-                    isValidID(jRun, Type_k2,  _k2EventID[jRun])   <<
-                    isValidID(jRun, Type_k2a, _k2aEventID[jRun]) <<
-                    isValidID(jRun, Type_R1,  _R1EventID[jRun]);
-
-        qDebug() << "append k2?" << ! _basisID.contains(_k2EventID[jRun]) << isValidID(jRun, Type_k2, _k2EventID[jRun]);
-
         // Count k2, k2a, and R1 events
         if ( ! _basisID.contains(_k2EventID[jRun]) && isValidID(jRun, Type_k2, _k2EventID[jRun]) )
         {
             _basisID.append(_k2EventID[jRun]);
             _basisShape.append(Type_k2);
             _challengeIndex.append(-1);
-            qDebug() << "append basisID" << _k2EventID[jRun];
         }
         if ( ! _basisID.contains(_k2aEventID[jRun]) && isValidID(jRun, Type_k2a, _k2aEventID[jRun]) )
         {
@@ -1916,7 +1886,6 @@ int PETRTM::countEvents()
         _k2EventCoefficient[jRun]  = getEventCoefficient(_k2EventID[jRun]);
         _k2aEventCoefficient[jRun] = getEventCoefficient(_k2aEventID[jRun]);
         _dCrdtEventCoefficient[jRun] = getEventCoefficient(_dCrdtEventID[jRun]);
-        qDebug() << "_k2EventCoefficient for run" << jRun << "=" << _k2EventCoefficient[jRun] << _k2EventID[jRun];
     }
 
     for ( int jChallenge=0; jChallenge<_maxChallenges; jChallenge++ )
@@ -1929,7 +1898,6 @@ int PETRTM::countEvents()
         }
     }
     int nCoeff = _basisID.size();
-    qDebug() << "PETRTM::countEvents exit" << nCoeff;
     return nCoeff;
 }
 
@@ -1942,7 +1910,6 @@ void PETRTM::setRTMModelType(RTMModelTypes model)
 
 void PETRTM::setRTMModelType(QString model)
 {
-    qDebug() << "PETRTM::setRTMModelType enter" << model;
     if ( model == "SRTM3" )
         _modelRTM = RTM_SRTM3;
     else if ( model == "SRTM2" )
@@ -1967,14 +1934,12 @@ void PETRTM::setRTMModelType(QString model)
 //    updateConditions();
 //    if ( getCurrentCondition() >= getNumberConditions() ) setCurrentCondition(0);
     setPrepared(false);
-    qDebug() << "PETRTM::setRTMModelType exit" << _modelRTM;
 };
 
 void PETRTM::createAllBasisFunctions()
 {
-    qDebug() << "PETRTM::createAllBasisFunctions enter";
     int nCoeff = countEvents();
-    qInfo() << "*************** create PET-RTM basis functions **************" << nCoeff << _nRuns;
+    // qInfo() << "*************** create PET-RTM basis functions **************" << nCoeff << _nRuns;
     if ( nCoeff == 0 ) return;
 
     int nTimeTotal = 0;
@@ -2018,7 +1983,6 @@ void PETRTM::createAllBasisFunctions()
             createChallengeBasisFunction(jCoeff, basis);
         addOrInsertBasisFunction(jCoeff,basis);
     }
-    qDebug() << "PETRTM::createAllBasisFunctions exit";
 }
 
 void PETRTM::recreateAllFRTMBasisFunctions()
@@ -2047,7 +2011,6 @@ void PETRTM::recreateAllFRTMBasisFunctions()
 
 void PETRTM::createRunBasisFunction(bool newTAC, QChar eventID, dVector &basis)
 {
-    qDebug() << "createRunBasisFunction" << isFRTM() << isRTM2() << isSRTM();
     dMatrix basisFunction;   basisFunction.resize(_nRuns);
 
     // For when not new TACs, reset the tissue vector to subtract the dCR/dt term
@@ -2185,7 +2148,6 @@ void PETRTM::createChallengeBasisFunction(int iCoeff, dVector &basis)
 
 void PETRTM::resetAndCalculateFRTMConvolution(bool calculateConvolution)
 { // passed matrices (run,time) should be pre-filled with zeros.
-    qDebug() << "resetAndCalculateFRTMConvolution enter" << calculateConvolution << _tau4[0];
     // Re-compute the convolution integrals
     for (int jRun=0; jRun<_nRuns; jRun++)
         _frtmConvolutionRaw[jRun].fill(0.,_nTimePerRun[jRun]);
@@ -2254,7 +2216,6 @@ void PETRTM::calculateTau2PrimeForSRTM2ForBiasFreeBPND(int iRun)
     else
     {
         double timeChallenge = _challengeOn[iChallenge][iStimulus];
-        qDebug() << "timeChallenge =" << timeChallenge;
         for (int jt=0; jt<_nTimePerRun[jt]; jt++)
         {
             if ( getTimeInRun(iRun,jt) < timeChallenge )
@@ -2263,18 +2224,12 @@ void PETRTM::calculateTau2PrimeForSRTM2ForBiasFreeBPND(int iRun)
                 break;
         }
     }
-    qDebug() << "iTimeLastBaseline =" << iTimeLastBaseline;
     double rVal = _refRegion[iRun][iTimeLastBaseline];
     double rInt = _refRegionIntegral[iRun][iTimeLastBaseline];
     double tInt = tissueIntegral[iRun][iTimeLastBaseline];
     double cInt = frtmConvolutionIntegral[iRun][iTimeLastBaseline];
-    qDebug() << "tInt" << tInt << "cInt" << cInt;
     double part1 = _tau2RefFRTM[iRun] * tInt / (tInt - cInt);
-    qDebug() << "rInt" << rInt << "rVal" << rVal << "_tau2RefFRTM" << _tau2RefFRTM[iRun];
     double part2 = (tInt - rInt) / (tInt - cInt) * cInt / rVal;
-    qDebug() << "PETRTM::calculateTau2PrimeForSRTM2ForBiasFreeBPND part1 part2" << part1 << part2;
-    qDebug() << "PETRTM::calculateTau2PrimeForSRTM2ForBiasFreeBPND frtm srtm2" << _tau2RefFRTM[iRun] << part1 - part2;
-    qDebug() << "PETRTM::calculateTau2PrimeForSRTM2ForBiasFreeBPND part2a part2b" << (tInt - rInt) / (tInt - cInt) << cInt / rVal;
 }
 
 void PETRTM::setSmoothingScale(double smoothingScale)
@@ -2413,25 +2368,20 @@ void PETRTM::createChallengeShape(int iRun, int indexChallenge, dVector &shape)
 }
 void PETRTM::integrateByRun(dMatrix &runMatrix )  // [nRuns][nTimePerRun]
 {
-    qDebug() << "PETRTM::integrateByRun enter" << _table.size() << _nRuns;
     dMatrix copiedMatrix = runMatrix;
     if ( _table.size() != _nRuns )
     { // this is just to provide a "default" option; bins sizes may differ in time
         _table.resize(_nRuns);
         for ( int jRun=0; jRun<_nRuns; jRun++ )
         {
-            qDebug() << "PETRTM::integrateByRun 0" << _nTimePerRun[jRun];
             _table[jRun].resize(_nTimePerRun[jRun]);
             for (int jt=0; jt<_nTimePerRun[jRun]; jt++)
                 _table[jRun][jt].append(1.);  // initialize time bin widths (1st column=frames) to 1.
         }
     }
-    qDebug() << "PETRTM::integrateByRun 1";
     // Find the integral from t'=0 to t'=t for each point. Reset at the start of each run.
-    qDebug() << "PETRTM::integrateByRun 2" << runMatrix.size();
     for ( int jRun=0; jRun<runMatrix.size(); jRun++ )
     {
-        qDebug() << "PETRTM::integrateByRun 3" << runMatrix[jRun].size();
         for ( int jt=0; jt<runMatrix[jRun].size(); jt++ )
         {
             double integral = 0.;
@@ -2443,12 +2393,10 @@ void PETRTM::integrateByRun(dMatrix &runMatrix )  // [nRuns][nTimePerRun]
             runMatrix[jRun][jt] = integral;
         }
     }
-    qDebug() << "PETRTM::integrateByRun exit";
 }
 
 void PETRTM::differentiateByRun(dMatrix &runMatrix )  // [nRuns][nTimePerRun]
 {
-    qDebug() << "PETRTM::differentiateByRun enter";
     dMatrix copiedMatrix = runMatrix;
     for (int jRun=0; jRun<_nRuns; jRun++)
     {
@@ -2461,7 +2409,6 @@ void PETRTM::differentiateByRun(dMatrix &runMatrix )  // [nRuns][nTimePerRun]
                 runMatrix[jRun][jt] = copiedMatrix[jRun][jt] / dt;
         }
     }
-    qDebug() << "PETRTM::differentiateByRun exit";
 }
 
 void PETRTM::averageStimuli(dMatrix yData, dMatrix yFit)

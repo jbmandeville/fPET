@@ -1,10 +1,11 @@
-#include "simwindow.h"
 #include <QtWidgets>
 #include <QDebug>
 #include <QVector>
 #include <QObject>
 #include <QFileDialog>
 #include <QString>
+#include "simwindow.h"
+#include "liedetector.h"
 
 SimWindow::SimWindow()
 {
@@ -23,6 +24,28 @@ SimWindow::SimWindow()
     this->setCentralWidget( centralWidget );
     auto *mainLayout = new QVBoxLayout( centralWidget );
     mainLayout->addWidget(_tabTimeSpace);
+
+    _statusBar = this->statusBar();
+    _statusBar->setStyleSheet("color:Darkred");
+
+    _progressBar = new QProgressBar(_statusBar);
+    _progressBar->setAlignment(Qt::AlignRight);
+    _progressBar->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+    _progressBar->setRange(0,1);
+//    _statusBar->addPermanentWidget(_progressBar);
+
+    _threadsComboBox = new QComboBox();
+    for (int jThread=0; jThread<QThread::idealThreadCount(); jThread++)
+        _threadsComboBox->addItem(QString("%1 threads").arg(jThread+1));
+    _threadsComboBox->setCurrentIndex(QThread::idealThreadCount()-3);
+    _threadsComboBox->setVisible(false);
+
+    QHBoxLayout *statusBarLayout = new QHBoxLayout();
+    // A page-independent help region or status bar can be added here if desired
+    statusBarLayout->addWidget(_threadsComboBox);
+    statusBarLayout->addWidget(_statusBar);
+    statusBarLayout->addWidget(_progressBar);
+    mainLayout->addLayout(statusBarLayout);
 
     // add a menu
     QMenuBar *menuBar = new QMenuBar;
@@ -201,9 +224,9 @@ void SimWindow::createSetupPage()
     connect(_calcRRMatch, SIGNAL(pressed()), this, SLOT(calculateRRMatch()));
 
     // reference region
-    auto *RRGroupBox        = new QGroupBox("Reference Region");
-    QLabel *tau2RefLabel    = new QLabel("1/k2 (min)");
-    QLabel *tau1RefLabel    = new QLabel("1/K1 (ml/cm^3/min)");
+    auto *RRGroupBox        = new QGroupBox("Reference Region: truth");
+    QLabel *tau2RefLabel    = new QLabel("1/k2' (min)");
+    QLabel *tau1RefLabel    = new QLabel("1/K1' (ml/cm^3/min)^-1");
     QLabel *noiseLabel      = new QLabel("Noise");
     QLabel *dataLabel       = new QLabel("Data reference");
     _tau2Ref = new QLineEdit();
@@ -321,6 +344,13 @@ void SimWindow::changedModelType(int indexInBox)
         _errorR1->setVisible(false);
         _errorTau2RefLabel->setVisible(false);
         _errorTau2Ref->setVisible(false);
+        if ( indexInBox == RTM_SRTM2 )
+            _checkBoxTau2RefGraph->setText("1/k2' (for unbiased BPnd);\nUse numerical methods");
+        else
+        {
+            _checkBoxTau2RefGraph->setChecked(false);
+            _checkBoxTau2RefGraph->setVisible(false);
+        }
     }
     else
     {
@@ -330,6 +360,8 @@ void SimWindow::changedModelType(int indexInBox)
         _errorR1->setVisible(true);
         _errorTau2RefLabel->setVisible(true);
         _errorTau2Ref->setVisible(true);
+        _checkBoxTau2RefGraph->setVisible(true);
+        _checkBoxTau2RefGraph->setText("1/k2' (=R1/k2)");
     }
     if ( indexInBox == RTM_rFRTM3 || indexInBox == RTM_rFRTM2 )
     {
@@ -367,12 +399,13 @@ void SimWindow::createTargetPage()
     int editTextSize=80;
 
     // target region: input
-    auto *targetGroupBox = new QGroupBox("Target Region: Input");
+    auto *targetGroupBox = new QGroupBox("Target Region: truth");
     QLabel *BPndLabel    = new QLabel("BPnd");
     QLabel *R1Label      = new QLabel("R1");
     QLabel *tau4Label    = new QLabel("1/k4 (min)");
     QLabel *challengeTimeLabel = new QLabel("Challenge time");
-    QLabel *challengeMagLabel  = new QLabel("Delta_BPnd (%)");
+    QChar delta = QChar(0x0394);
+    QLabel *challengeMagLabel  = new QLabel(QString("%1BPnd (%)").arg(delta));
     QLabel *noiseLabel   = new QLabel("Noise");
     _BPnd          = new QLineEdit();
     _R1            = new QLineEdit();
@@ -415,12 +448,12 @@ void SimWindow::createTargetPage()
     connect(_noiseTar,      SIGNAL(editingFinished()), this, SLOT(changedNoiseTar()));
 
     // target region: analysis
-    auto *analysisGroupBox = new QGroupBox("Target Region: Analysis");
+    auto *analysisGroupBox = new QGroupBox("Target Region: analysis");
     QLabel *modelLabel      = new QLabel("RTM type");
     QLabel *weightLabel     = new QLabel("Weighting scheme");
     QLabel *challengeLabel  = new QLabel("Challenge?   ");
-    _tau2RefAnalysisLabel   = new QLabel("Analysis Tau2'");
-    _tau4AnalysisLabel      = new QLabel("Analysis Tau4");
+    _tau2RefAnalysisLabel   = new QLabel("Analysis 1/k2'");
+    _tau4AnalysisLabel      = new QLabel("Analysis 1/k4");
     _modelType = new QComboBox();
     _modelType->addItem("SRTM3");
     _modelType->addItem("SRTM2");
@@ -470,7 +503,7 @@ void SimWindow::createTargetPage()
     QLabel *errork2Label    = new QLabel("k2   ");
     QLabel *errork2aLabel   = new QLabel("k2a  ");
     _errorR1Label           = new QLabel("R1   ");
-    _errorTau2RefLabel      = new QLabel("Tau2Ref");
+    _errorTau2RefLabel      = new QLabel("1/k2'");
     _errorChallengeLabel    = new QLabel("Challenge");
     _errorBPnd  = new QLabel();
     _errork2    = new QLabel();
@@ -593,10 +626,14 @@ void SimWindow::createVersusBPndPage()
     BPndGroupBox->setLayout(BPndLayout);
     BPndLayout->setSpacing(0);
 
-    auto *calcGroupBox = new QGroupBox("Calculate or clear curves");
-    QLabel *calcLabel  = new QLabel("Calculate curves");
-    QLabel *clearLabel = new QLabel("Clear curves");
-    _calculateBPndCurves   = new QPushButton();
+    auto *calcGroupBox   = new QGroupBox("Calculate or clear curves");
+    QLabel *nSimulations = new QLabel("# simulations");
+    QLabel *calcLabel    = new QLabel("Calculate curves");
+    QLabel *clearLabel   = new QLabel("Clear curves");
+    _numberSimulationsBPnd = new QLineEdit();
+    _numberSimulationsBPnd->setText(numberString.setNum(1));
+    _numberSimulationsBPnd->setEnabled(false);
+    _calculateBPndCurves = new QPushButton();
     QPixmap pixmapCalculate(":/My-Icons/calculator.png");
     QIcon calculatorIcon(pixmapCalculate);
     _calculateBPndCurves->setIcon(calculatorIcon);
@@ -605,20 +642,24 @@ void SimWindow::createVersusBPndPage()
     QIcon eraserIcon(eraser);
     _clearBPndCurves->setIcon(eraserIcon);
     auto *calcLayout = new QGridLayout();
-    calcLayout->addWidget(calcLabel,0,0);
-    calcLayout->addWidget(_calculateBPndCurves,0,1);
-    calcLayout->addWidget(clearLabel,1,0);
-    calcLayout->addWidget(_clearBPndCurves,1,1);
+    calcLayout->addWidget(nSimulations,0,0);
+    calcLayout->addWidget(_numberSimulationsBPnd,0,1);
+    calcLayout->addWidget(calcLabel,1,0);
+    calcLayout->addWidget(_calculateBPndCurves,1,1);
+    calcLayout->addWidget(clearLabel,2,0);
+    calcLayout->addWidget(_clearBPndCurves,2,1);
     calcGroupBox->setLayout(calcLayout);
     calcLayout->setSpacing(0);
+    connect(_numberSimulationsBPnd, SIGNAL(editingFinished()), this, SLOT(changedNumberSimulationsBPnd()));
     connect(_calculateBPndCurves, SIGNAL(pressed()), this, SLOT(calculateBPndCurves()));
-    connect(_clearBPndCurves, SIGNAL(pressed()),     this, SLOT(clearBPndCurves()));
+    connect(_clearBPndCurves,     SIGNAL(pressed()), this, SLOT(clearBPndCurves()));
 
     _checkBoxBPndErrGraph  = new QCheckBox("BPnd error");
     _checkBoxChallErrGraph = new QCheckBox("Challenge error");
-    _checkBoxTau2RefGraph  = new QCheckBox("Tau2Ref");
+    _checkBoxTau2RefGraph  = new QCheckBox("1/k2' (=R1/k2)");
     _checkBoxBPndErrGraph->setChecked(true);
     _checkBoxChallErrGraph->setChecked(false);
+    _checkBoxChallErrGraph->setVisible(false);
     _checkBoxTau2RefGraph->setChecked(true);
     auto *checkGroupBox = new QGroupBox("Show or hide graphs");
     auto *checkLayout = new QVBoxLayout();
@@ -901,6 +942,69 @@ void SimWindow::updateReferenceGraph()
     _RRPlot->plotDataAndFit(true);
     qDebug() << "SimWindow::updateReferenceGraph exit";
 }
+void SimWindow::updateTargetGraph()
+{
+    qDebug() << "SimWindow::updateTargetGraph enter";
+    // run the simulation
+    _simulator.generateTargetTAC();
+    qDebug() << "SimWindow::updateTargetGraph 1";
+
+    // update the plot
+    _targetPlot->init();
+    _targetPlot->setLegendOn(true);
+    _targetPlot->addCurve(0,"target");
+    double duration = _simulator.getDuration();
+    double stepSize = _simulator.getStepSize();
+    int lDownSample = _simulator.getDownSampling();
+    int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+    dVector xTime;   xTime.resize(nTime);
+    dVector yTAC;    yTAC.resize(nTime);
+    dMatrix tissueVector;  tissueVector.resize(1);  tissueVector[0].resize(nTime);
+    dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+    {
+        xTime[jt] = jt * lDownSample * stepSize;
+        yTAC[jt]  = tissueVector[0][jt] = _simulator.getCtDown(jt);
+    }
+    _targetPlot->setData(xTime,yTAC);
+
+    // update the RTM model
+    _PETRTM.setTissueVector(true,tissueVector);
+    _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
+    _PETRTM.prepare();
+    _PETRTM.fitData(tissueVector,fitVector);
+    qDebug() << "SimWindow::updateTargetGraph 3";
+    analyzeSimulatedTAC();
+    qDebug() << "SimWindow::updateTargetGraph 4";
+
+    // add fit
+    _targetPlot->addCurve(0,"fit");
+    _targetPlot->setColor(Qt::red);
+    for (int jt=0; jt<nTime; jt++)
+        yTAC[jt] = _PETRTM.getFit(jt);
+    _targetPlot->setData(xTime,yTAC);
+
+    // add RR
+    _targetPlot->addCurve(0,"RR");
+    _targetPlot->setColor(Qt::gray);
+    for (int jt=0; jt<nTime; jt++)
+        yTAC[jt]  = _simulator.getCrDown(jt);
+    _targetPlot->setData(xTime,yTAC);
+
+    // add FRTM convolution
+    if ( _PETRTM.isFRTM() )
+    {
+        _targetPlot->addCurve(0,"convolution");
+        _targetPlot->setColor(Qt::green);
+        for (int jt=0; jt<nTime; jt++)
+            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
+        _targetPlot->setData(xTime,yTAC);
+    }
+
+    _targetPlot->conclude(0,true);
+    _targetPlot->plotDataAndFit(true);
+    qDebug() << "SimWindow::updateTargetGraph exit";
+}
 void SimWindow::updateBasisGraph()
 {
     _basisPlot->init();
@@ -975,70 +1079,7 @@ void SimWindow::updateBasisGraph()
 
     _basisPlot->conclude(0,true);
     _basisPlot->plotDataAndFit(true);
-
-}
-void SimWindow::updateTargetGraph()
-{
-    qDebug() << "SimWindow::updateTargetGraph enter";
-    // run the simulation
-    _simulator.generateTargetTAC();
-    qDebug() << "SimWindow::updateTargetGraph 1";
-
-    // update the plot
-    _targetPlot->init();
-    _targetPlot->setLegendOn(true);
-    _targetPlot->addCurve(0,"target");
-    double duration = _simulator.getDuration();
-    double stepSize = _simulator.getStepSize();
-    int lDownSample = _simulator.getDownSampling();
-    int nTime = static_cast<int>(duration/stepSize) / lDownSample;
-    dVector xTime;   xTime.resize(nTime);
-    dVector yTAC;    yTAC.resize(nTime);
-    dMatrix tissueVector;  tissueVector.resize(1);  tissueVector[0].resize(nTime);
-    dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
-    {
-        xTime[jt] = jt * lDownSample * stepSize;
-        yTAC[jt]  = tissueVector[0][jt] = _simulator.getCtDown(jt);
-    }
-    _targetPlot->setData(xTime,yTAC);
-
-    // update the RTM model
-    _PETRTM.setTissueVector(true,tissueVector);
-    _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
-    _PETRTM.prepare();
-    _PETRTM.fitData(tissueVector,fitVector);
-    qDebug() << "SimWindow::updateTargetGraph 3";
-    analyzeSimulatedTAC();
-    qDebug() << "SimWindow::updateTargetGraph 4";
-
-    // add fit
-    _targetPlot->addCurve(0,"fit");
-    _targetPlot->setColor(Qt::red);
-    for (int jt=0; jt<nTime; jt++)
-        yTAC[jt] = _PETRTM.getFit(jt);
-    _targetPlot->setData(xTime,yTAC);
-
-    // add RR
-    _targetPlot->addCurve(0,"RR");
-    _targetPlot->setColor(Qt::gray);
-    for (int jt=0; jt<nTime; jt++)
-        yTAC[jt]  = _simulator.getCrDown(jt);
-    _targetPlot->setData(xTime,yTAC);
-
-    // add FRTM convolution
-    if ( _PETRTM.isFRTM() )
-    {
-        _targetPlot->addCurve(0,"convolution");
-        _targetPlot->setColor(Qt::green);
-        for (int jt=0; jt<nTime; jt++)
-            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
-        _targetPlot->setData(xTime,yTAC);
-    }
-
-    _targetPlot->conclude(0,true);
-    _targetPlot->plotDataAndFit(true);
-    qDebug() << "SimWindow::updateTargetGraph exit";
+    qDebug() << "SimWindow::updateBasisGraph exit";
 }
 void SimWindow::updateAllGraphs()
 {
@@ -1070,6 +1111,9 @@ void SimWindow::analyzeSimulatedTAC()
     truth = _simulator.getTau2Ref();
     guess = _PETRTM.getTau2RefInRun(0);
     _errorTau2Ref->setText(analyzeString(truth,guess));
+    dPoint2D k2Ref = _PETRTM.getk2RefInRun(0);
+    qDebug() << "k2Ref =" << k2Ref.x << "±" << k2Ref.y << "with relative error" << k2Ref.y / k2Ref.x * 100.;
+
     // challenge
     truth = _simulator.getChallengeMag();  // delta_BPnd abs
     guess = getChallengeMagFromAnalysis();
@@ -1099,7 +1143,7 @@ double SimWindow::getChallengeMagFromAnalysis()
 QString SimWindow::analyzeString(double truth, double guess)
 {
     QString percentString, valueString;
-    percentString.setNum(percentageError(truth,guess),'g',2);
+    percentString.setNum(percentageError(guess,truth),'g',2);
     valueString.setNum(guess,'g',3);
     return percentString + " % " + QString("(abs = %1)").arg(valueString);
 }
@@ -1236,6 +1280,14 @@ void SimWindow::changedNoiseRef()
     }
     else
         _noiseRef->setText(stringEntered.setNum(_simulator.getNoiseRef()));
+    bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
+    _numberSimulationsBPnd->setEnabled(noisy);
+    _threadsComboBox->setVisible(noisy);
+    if ( !noisy )
+    {
+        _numberSimulationsPerThread = 1;
+        _numberSimulationsBPnd->setText(stringEntered.setNum(_numberSimulationsPerThread));
+    }
 }
 void SimWindow::changedFastElimination()
 {
@@ -1361,6 +1413,14 @@ void SimWindow::changedNoiseTar()
     }
     else
         _noiseTar->setText(stringEntered.setNum(_simulator.getNoiseTar()));
+    bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
+    _numberSimulationsBPnd->setEnabled(noisy);
+    _threadsComboBox->setVisible(noisy);
+    if ( !noisy )
+    {
+        _numberSimulationsPerThread = 1;
+        _numberSimulationsBPnd->setText(stringEntered.setNum(_numberSimulationsPerThread));
+    }
 }
 void SimWindow::changedTau2RefAnalysis()
 {
@@ -1408,6 +1468,7 @@ void SimWindow::changedCheckBoxChallenge(bool state)
     _errorChallengeLabel->setVisible(state);
     _errorChallenge->setVisible(state);
     _checkBoxChallErrGraph->setChecked(state);
+    _checkBoxChallErrGraph->setVisible(state);
     clearTimeCurves();
     _PETRTM.setPrepared(false);
     updateAllGraphs();
@@ -1494,6 +1555,16 @@ void SimWindow::changedBPndStep()
     else
         _BPndStep->setText(stringEntered.setNum(_BPndStepValue));
 }
+void SimWindow::changedNumberSimulationsBPnd()
+{
+    QString stringEntered = _numberSimulationsBPnd->text();
+    bool ok;
+    int value = stringEntered.toInt(&ok);
+    if ( ok )
+        _numberSimulationsPerThread = value;
+    else
+        _numberSimulationsBPnd->setText(stringEntered.setNum(_numberSimulationsPerThread));
+}
 void SimWindow::changedTimeLow()
 {
     QString stringEntered = _timeLow->text();
@@ -1537,13 +1608,14 @@ void SimWindow::clearBPndCurves()
 
     _errBPndPlot->init();
     _errBPndPlot->setLabelXAxis("BPnd");
+//    _errBPndPlot->setLabelXAxis("");
     _errBPndPlot->setLabelYAxis("BPnd % err");
     _errBPndPlot->plotDataAndFit(true);
     _errBPndPlot->setXRange(xRange);
 
     _errChallPlot->init();
     _errChallPlot->setLabelXAxis("BPnd");
-    _errChallPlot->setLabelYAxis("dBPnd abs err");
+    _errChallPlot->setLabelYAxis(QString("%1BPnd abs err").arg(QChar(0x0394)));
     _errChallPlot->plotDataAndFit(true);
     _errChallPlot->setXRange(xRange);
 
@@ -1556,6 +1628,107 @@ void SimWindow::clearBPndCurves()
 
 void SimWindow::calculateBPndCurves()
 {
+    bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
+    if ( noisy )
+    {
+        calculateBPndCurvesInThreads();
+        return;
+    }
+
+    bool calculateTau2Ref = !_PETRTM.isRTM2() || _checkBoxTau2RefGraph->isChecked();
+    double saveBPnd = _simulator.getBP0(); // BPnd will be changed, so save the value for later restoration
+    QString numberString;
+    double duration = _simulator.getDuration();
+    double stepSize = _simulator.getStepSize();
+    int lDownSample = _simulator.getDownSampling();
+    int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+    dMatrix refRegion;      refRegion.resize(1);    refRegion[0].resize(nTime);
+    dMatrix tissueVector;   tissueVector.resize(1); tissueVector[0].resize(nTime);
+    dMatrix fitVector;      fitVector.resize(1);    fitVector[0].resize(nTime);
+
+    dVector xVector, errBPnd, errChall, tau2Ref, errBPndRTM2, errChallRTM2;
+    for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
+    {
+        qDebug() << "BP0 =" << BP0;
+        xVector.append(BP0);
+        _simulator.setBP0(BP0);  // set BP0 and run a series of samples
+
+        for (int jSim=0; jSim<_numberSimulationsPerThread; jSim++)
+        {
+            _simulator.run();  // run the simulations with randomized noise
+            // Perform the analysis
+            for (int jt=0; jt<nTime; jt++)
+            {
+                refRegion[0][jt]    = _simulator.getCrDown(jt);
+                tissueVector[0][jt] = _simulator.getCtDown(jt);
+            }
+            _PETRTM.setReferenceRegion(refRegion);
+            _PETRTM.setTissueVector(true,tissueVector);
+            _PETRTM.prepare();
+            _PETRTM.fitData(tissueVector,fitVector);
+
+            // update the BP error
+            double guess = _PETRTM.getBP0InRun(0);
+            if ( jSim == 0 )
+                errBPnd.append(percentageError(guess,BP0));
+            else
+                errBPnd.last() += percentageError(guess,BP0);
+
+            // update the challenge error
+            double truth = _simulator.getChallengeMag();
+            guess = getChallengeMagFromAnalysis();
+            if ( jSim == 0 )
+                errChall.append(guess - truth);
+            else
+                errChall.last() += guess - truth;
+
+            // update the tau2Ref value
+            if ( !_PETRTM.isRTM2() )
+            {
+                guess = _PETRTM.getTau2RefInRun(0);
+                if ( jSim == 0 )
+                    tau2Ref.append(guess);
+                else
+                    tau2Ref.last() += guess;
+            }
+            else if ( _checkBoxTau2RefGraph->isChecked() )
+            {
+                double saveTau2Ref = _PETRTM.getTau2RefInRun(0); // tau2Ref will be changed, so save the value for later restoration
+                double bestTau2Ref = bestTau2RefForRTM2();
+                tau2Ref.append(bestTau2Ref);
+                _tau2RefAnalysis->setText(numberString.setNum(bestTau2Ref));  changedTau2RefAnalysis();
+                // Update error vectors for optimized RTM2
+                truth = _simulator.getBP0();
+                guess = _PETRTM.getBP0InRun(0);
+                errBPndRTM2.append(percentageError(guess,BP0));
+                truth = _simulator.getChallengeMag();
+                guess = getChallengeMagFromAnalysis();
+                errChallRTM2.append(guess - truth);
+                // restore the value of tau2Ref
+                _tau2RefAnalysis->setText(numberString.setNum(saveTau2Ref));  changedTau2RefAnalysis();
+            }
+        } // jSim
+    } // loop over BP0 values
+
+    // Normalize all the curves; also convert to percent for errBPnd
+    for (int jNorm=0; jNorm<xVector.size(); jNorm++)
+    {
+        errBPnd[jNorm]  /= static_cast<double>(_numberSimulationsPerThread);
+        errChall[jNorm] /= static_cast<double>(_numberSimulationsPerThread);
+        if ( calculateTau2Ref )
+        { // normalize tau2Ref if it was calculated
+            tau2Ref[jNorm] /= static_cast<double>(_numberSimulationsPerThread);
+            if ( _PETRTM.isRTM2() )
+            { // for RTM2, calculate errors associated with the optimal SRTM2 tau2Ref value
+                errBPndRTM2[jNorm]  /= static_cast<double>(_numberSimulationsPerThread);
+                errChallRTM2[jNorm] /= static_cast<double>(_numberSimulationsPerThread);
+            }
+        }
+    } // jNorm
+
+    // restore the value of BPnd
+    _BPnd->setText(numberString.setNum(saveBPnd));  changedBPND();
+
     QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
                          Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
     int nCurves = _errBPndPlot->getNumberCurves();
@@ -1575,66 +1748,29 @@ void SimWindow::calculateBPndCurves()
     if ( _PETRTM.isRTM2() )
         _tau2RefPlot->setPointStyle(QCPScatterStyle::ssCross);
 
-    dVector xVector, errBPnd, errChall, tau2Ref, errBPndRTM2, errChallRTM2;
-    for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
-    {
-        double saveBPnd = _simulator.getBP0(); // BPnd will be changed, so save the value for later restoration
-
-        xVector.append(BP0);
-        QString numberString;
-
-        // Change BPnd and run the simulation
-        _BPnd->setText(numberString.setNum(BP0));  changedBPND();
-
-        double truth = _simulator.getBP0();
-        double guess = _PETRTM.getBP0InRun(0);
-        errBPnd.append(percentageError(BP0,guess));
-
-        truth = _simulator.getChallengeMag();
-        guess = getChallengeMagFromAnalysis();
-        errChall.append(guess - truth);
-
-        if ( !_PETRTM.isRTM2() )
-        {
-            guess = _PETRTM.getTau2RefInRun(0);
-            tau2Ref.append(guess);
-            qDebug() << "tau2Ref = " << guess;
-        }
-        else
-        {
-            double saveTau2Ref = _PETRTM.getTau2RefInRun(0); // tau2Ref will be changed, so save the value for later restoration
-            double bestTau2Ref = bestTau2RefForRTM2();
-            tau2Ref.append(bestTau2Ref);
-            _tau2RefAnalysis->setText(numberString.setNum(bestTau2Ref));  changedTau2RefAnalysis();
-            // Update error vectors for optimized RTM2
-            truth = _simulator.getBP0();
-            guess = _PETRTM.getBP0InRun(0);
-            errBPndRTM2.append(percentageError(BP0,guess));
-            truth = _simulator.getChallengeMag();
-            guess = getChallengeMagFromAnalysis();
-            errChallRTM2.append(guess - truth);
-            // restore the value of tau2Ref
-            _tau2RefAnalysis->setText(numberString.setNum(saveTau2Ref));  changedTau2RefAnalysis();
-        }
-
-        // restore the value of BPnd
-        _BPnd->setText(numberString.setNum(saveBPnd));  changedBPND();
-    }
+    qDebug() << "setData1" << xVector.size() << errBPnd.size();
     _errBPndPlot->setData(xVector,errBPnd);
+    qDebug() << "setData2" << errChall.size();
     _errChallPlot->setData(xVector,errChall);
-    _tau2RefPlot->setData(xVector,tau2Ref);
+    if ( calculateTau2Ref )
+    {
+        qDebug() << "setData3" << tau2Ref.size();
+        _tau2RefPlot->setData(xVector,tau2Ref);
+    }
 
-    if ( _PETRTM.isRTM2() )
+    if ( _PETRTM.isRTM2() && _checkBoxTau2RefGraph->isChecked() )
     { // add a new curves to the two error plots
         _errBPndPlot->addCurve(0,"error_BPnd");
         _errBPndPlot->setPointSize(5);
         _errBPndPlot->setPointStyle(QCPScatterStyle::ssCross);
         _errBPndPlot->setColor(colors[iColor]);
+        qDebug() << "setData4" << errBPndRTM2.size();
         _errBPndPlot->setData(xVector,errBPndRTM2);
         _errChallPlot->addCurve(0,"error_Challenge");
         _errChallPlot->setPointSize(5);
         _errChallPlot->setPointStyle(QCPScatterStyle::ssCross);
         _errChallPlot->setColor(colors[iColor]);
+        qDebug() << "setData5" << errChallRTM2.size();
         _errChallPlot->setData(xVector,errChallRTM2);
     }
 
@@ -1649,6 +1785,7 @@ void SimWindow::calculateBPndCurves()
 
 double SimWindow::bestTau2RefForRTM2()
 { // search for root
+    qDebug() << "SimWindow::bestTau2RefForRTM2 enter";
     double tau2Ref = _PETRTM.getTau2RefInRun(0);
     double trueBP0 = _simulator.getBP0();
     double estBP0  = _PETRTM.getBP0InRun(0);
@@ -1723,7 +1860,7 @@ void SimWindow::calculateTimeCurves()
             _timeDuration->setText(numberString);  changedTimeDuration();
             double truth = _simulator.getBP0();
             double guess = _PETRTM.getBP0InRun(0);
-            errVector.append(percentageError(truth,guess));
+            errVector.append(percentageError(guess,truth));
             qDebug() << "change time to" << numberString << "with result" << guess;
         }
     }
@@ -1736,4 +1873,129 @@ void SimWindow::calculateTimeCurves()
     _errBPndOrChallVsTimePlot->setData(xVector,errVector);
     _errBPndOrChallVsTimePlot->conclude(0,true);
     _errBPndOrChallVsTimePlot->plotDataAndFit(true);
+}
+
+void SimWindow::calculateBPndCurvesInThreads()
+{
+    qDebug() << "SimWindow::calculateBPndCurvesInThreads enter";
+    updateLieDetectorProgress(10*_nThreads);
+    qDebug() << "SimWindow::calculateBPndCurvesInThreads 1";
+
+    _BP0Vector.clear();
+    for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
+        _BP0Vector.append(BP0);
+    int nValues = _BP0Vector.size();
+    _errBPndVector.fill(0.,nValues);    _errChallVector.fill(0.,nValues);    _tau2RefVector.fill(0.,nValues);
+    qDebug() << "SimWindow::calculateBPndCurvesInThreads 2";
+
+    /////////////////////////////////////////////////////////
+    // Create the average volume.
+    qRegisterMetaType<dVector>("dVector");
+    QVector<lieDetector *> simSegment;
+    simSegment.resize(_nThreads);
+    for (int jThread=0; jThread<_nThreads; jThread++)
+    {
+        qDebug() << "SimWindow::calculateBPndCurvesInThreads jThread" << jThread;
+        simSegment[jThread] = new lieDetector(_numberSimulationsPerThread, _BP0Vector, _simulator, _PETRTM);
+        connect(simSegment[jThread], SIGNAL(progressLieDetector(int)), this, SLOT(updateLieDetectorProgress(int)));
+        connect(simSegment[jThread], SIGNAL(finishedLieDetector(dVector,dVector,dVector)),this,SLOT(finishedLieDetectorOneThread(dVector,dVector,dVector)));
+        QThreadPool::globalInstance()->start(simSegment[jThread]);
+    }
+    qDebug() << "SimWindow::calculateBPndCurvesInThreads exit";
+}
+
+void SimWindow::updateLieDetectorProgress(int iProgress)
+{
+    static int progressCounter=0;
+    // qDebug() << "SimWindow::updateLieDetectorProgress enter" << progressCounter << "of" << _progressBar->maximum();
+    if ( iProgress > 0 )  // this gives the range
+    { // initialize with nVolumes = iProgress
+        progressCounter = 0;
+        _progressBar->setMaximum(iProgress);
+    }
+    else
+    {
+        progressCounter++;
+        _progressBar->setValue(qMin(progressCounter,_progressBar->maximum()));
+    }
+}
+
+void SimWindow::finishedLieDetectorOneThread(dVector errBPnd, dVector errChall, dVector tau2Ref)
+{
+    static int nThreadsFinished=0;
+
+    if ( errBPnd.size() != _BP0Vector.size() )
+        qFatal("Error: mismatched vector sizes in SimWindow::finishedLieDetectorOneThread");
+
+    int nValues = _BP0Vector.size();
+    for (int jValue=0; jValue<nValues; jValue++)
+    {
+        _errBPndVector[jValue]  += errBPnd[jValue];
+        _errChallVector[jValue] += errChall[jValue];
+        _tau2RefVector[jValue]  += tau2Ref[jValue];
+        qDebug() << "finishedLieDetectorOneThread[" << jValue << tau2Ref[jValue];
+    }
+
+    nThreadsFinished++;
+    if ( nThreadsFinished == _nThreads )
+    {
+        _progressBar->reset();
+        _progressBar->setMaximum(1);  // indicates that the bar is available
+        nThreadsFinished = 0;  // reset for next time
+        finishedLieDetectorAllThreads();
+    }
+}
+
+void SimWindow::finishedLieDetectorAllThreads()
+{
+    // normalize
+    int nValues = _BP0Vector.size();
+    double normValue = _numberSimulationsPerThread*_nThreads;
+    for (int jValue=0; jValue<nValues; jValue++)
+    {
+        _errBPndVector[jValue]  /= normValue;
+        _errChallVector[jValue] /= normValue;
+        _tau2RefVector[jValue]  /= normValue;
+    }
+
+    // restore the value of BPnd in simulator, plus regenerate graphs
+    changedBPND();  // this will use the value saved in the text field of _BPnd, which should have changed during the simulation
+
+    QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
+                         Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
+    int nCurves = _errBPndPlot->getNumberCurves();
+    int iColor  = nCurves%10;
+
+    _errBPndPlot->addCurve(0,"error_BPnd");
+    _errBPndPlot->setPointSize(5);
+    _errBPndPlot->setColor(colors[iColor]);
+
+    _errChallPlot->addCurve(0,"error_Challenge");
+    _errChallPlot->setPointSize(5);
+    _errChallPlot->setColor(colors[iColor]);
+
+    _tau2RefPlot->addCurve(0,"error_Tau2Ref");
+    _tau2RefPlot->setPointSize(5);
+    _tau2RefPlot->setColor(colors[iColor]);
+    if ( _PETRTM.isRTM2() )
+        _tau2RefPlot->setPointStyle(QCPScatterStyle::ssCross);
+
+    dVector xVector;
+    for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
+        xVector.append(BP0);
+
+    _errBPndPlot->setData(_BP0Vector,_errBPndVector);
+    _errChallPlot->setData(_BP0Vector,_errChallVector);
+    if ( !_PETRTM.isRTM2() )
+        _tau2RefPlot->setData(_BP0Vector,_tau2RefVector);
+
+    _errBPndPlot->conclude(0,true);
+    _errChallPlot->conclude(0,true);
+    _tau2RefPlot->conclude(0,true);
+
+    _errBPndPlot->plotDataAndFit(true);
+    _errChallPlot->plotDataAndFit(true);
+    _tau2RefPlot->plotDataAndFit(true);
+
+    _progressBar->reset();
 }

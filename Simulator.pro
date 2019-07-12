@@ -18,6 +18,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
         generalglm.cpp \
+        liedetector.cpp \
         main.cpp \
         petrtm.cpp \
         plot.cpp \
@@ -34,6 +35,7 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 HEADERS += \
     generalglm.h \
     io.h \
+    liedetector.h \
     petrtm.h \
     plot.h \
     qcustomplot.h \

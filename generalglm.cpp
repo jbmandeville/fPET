@@ -283,7 +283,6 @@ void GeneralGLM::init(int ntime , int nCoeff)
     if ( nCoeff != _nCoeff )
     {
         _nCoeff = nCoeff;
-        qDebug() << "GeneralGLM::init() fill beta" << _nCoeff;
         _beta_c.fill(0.,_nCoeff);
         _sem_c.fill(0.,_nCoeff);
         _XTWXm1_cc.resize(_nCoeff);
@@ -430,7 +429,6 @@ void GeneralGLM::fitWLS(dVector &data, bool computeSigma2)
     {
         // Set everything to zero
         _average = _sigma2 = 0.;
-        qDebug() << "GeneralGLM::fitWLS() fill beta"  << _nCoeff;
         _beta_c.fill(0.,_nCoeff);   _sem_c.fill(0.,_nCoeff);
         _fit_t.fill(0.,_nTime);     _fitErr_t.fill(0.,_nTime);
         return;
@@ -519,12 +517,9 @@ void GeneralGLM::defineConditions(QString conditionString )
     //  ... and 1 F test
     //    1) events 1-3 or 2-4
 
-//    qDebug() << "GeneralGLM::defineConditions enter" << conditionString;
-
     _conditionList = conditionString.split(QRegExp("[ ]"), QString::SkipEmptyParts);
     decodeConditions(false);  // this excludes bad conditions in the string and reset the string to valid conditions
     decodeConditions(true);
-//    qDebug() << "GeneralGLM::defineConditions exit" << getNumberConditions();
 }
 
 void GeneralGLM::decodeConditions( bool defineMatrices )
@@ -673,16 +668,11 @@ int GeneralGLM::getEventIndex(QChar eventID)
 
 int GeneralGLM::getEventCoefficient(QChar eventID)
 {
-    qDebug() << "GeneralGLM::getEventCoefficient enter" << eventID << getNumberCoefficients() << _basisID;
     for (int jCoeff=0; jCoeff<_basisID.size(); jCoeff++)
     {
         if ( _basisID[jCoeff] == eventID )
-        {
-            qDebug() << "GeneralGLM::getEventCoefficient exit" << jCoeff;
             return(jCoeff);
-        }
     }
-    qDebug() << "GeneralGLM::getEventCoefficient exit" << -1;
     return -1;
 }
 int GeneralGLM::getEventCoefficient(QChar eventID, int iOccurrence)
@@ -722,7 +712,6 @@ iVector GeneralGLM::getEventCoefficients(QChar eventID )
 
 void GeneralGLM::calculatePseudoInverse()
 {
-    qDebug() << "GeneralGLM::calculatePseudoInverse() enter fill beta" << _nCoeff;
     // Zero all data
     _beta_c.fill(0.,_nCoeff);
     _sem_c.fill(0.,_nCoeff);

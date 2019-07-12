@@ -1,8 +1,7 @@
 #include "simengine.h"
 #include <QtMath>
 #include <QDebug>
-
-#define RAND_0_1 (rand()/2147483647.) // random number from 0 to 1
+#include <QRandomGenerator>
 
 simEngine::simEngine()
 {
@@ -11,11 +10,9 @@ simEngine::simEngine()
 
 void simEngine::run()
 {
-    qDebug() << "simEngine::run enter";
     generatePlasmaTAC();
     generateReferenceTAC();
     generateTargetTAC();
-    qDebug() << "simEngine::run exit";
 }
 void simEngine::generateTargetTAC()
 {
@@ -29,10 +26,8 @@ void simEngine::generatePlasmaTAC()
 {
     // For simplicity, treat the plasma as two separate compartments: fast and slow
     // dC_p/dt = I(t)-K_fast*C_p-_slow*C_p*+Ks_in*C_s*(V_p/V_s)
-    qDebug() << "simEngine::generatePlasmaTAC enter";
 
     int nTime = static_cast<int>(_duration / _dt);
-    qDebug() << "simEngine::generatePlasmaTAC nTime" << nTime;
     double Cp_fast = 0.;  double Cp_slow = 0.;
     _Cp.clear();
     double magInfusion = 0.;
@@ -52,12 +47,10 @@ void simEngine::generatePlasmaTAC()
         _Cp.append(Cp_fast + Cp_slow);
     }
     _CpBinned = downSample(_Cp);
-    qDebug() << "simEngine::generatePlasmaTAC exit";
 }
 
 void simEngine::generateReferenceTAC()
 {
-    qDebug() << "simEngine::generateReferenceTAC enter";
     // dCr_dt = K1 * Cp - k2 * Cr;
     int nTime = _Cp.size();
     double Cr = 0.;
@@ -76,13 +69,11 @@ void simEngine::generateReferenceTAC()
     // Downsample the TAC and add Noise
     _CrBinned = downSample(_Cr);
     addNoise(_noiseRef, _CrBinned);
-    qDebug() << "simEngine::generateReferenceTAC exit";
 }
 
 void simEngine::generateTargetSRTM()
 {
     // dCt_dt = K1 * Cp - k2a * Ct
-    qDebug() << "simEngine::generateTargetFRTM enter";
 
     // Derived quantities: update tissue properties
     _K1  = _R1 * _K1Ref;
@@ -100,7 +91,6 @@ void simEngine::generateTargetSRTM()
         {
             double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
             k2a = _k2 / (1. + BP1);
-            qDebug() << "delta_BPnd =" << _BP0 - BP1;
         }
         if ( jt > 0 )
         {
@@ -108,20 +98,17 @@ void simEngine::generateTargetSRTM()
             Ct += dCtdt * _dt;
         }
         _Ct.append(Ct + _fracPlasma * _Cp[jt]);
-        qDebug() << "Ct = " << _Ct.last();
     }
 
     // Downsample the TAC and add Noise
     _CtBinned = downSample(_Ct);
     addNoise(_noiseTar, _CtBinned);
-    qDebug() << "simEngine::generateTargetFRTM exit";
 }
 
 void simEngine::generateTargetFRTM()
 {
     // dCb_dt = k3 * Cf - koff * Cb = kon * Bavail * Cf - koff * Cb
     // dCf_dt = K1 * Cp + koff * Cb - (k2+k3)*Cf
-    qDebug() << "simEngine::generateTargetFRTM enter";
 
     // Derived quantities: update tissue properties
     _K1  = _R1 * _K1Ref;
@@ -139,7 +126,6 @@ void simEngine::generateTargetFRTM()
         if ( postChallenge && _deltaBPPercent != 0. )
         {
             double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
-            qDebug() << "delta_BPnd =" << _BP0 - BP1;
             k3 = BP1 * _k4;
         }
         if ( jt > 0 )
@@ -157,12 +143,10 @@ void simEngine::generateTargetFRTM()
     // Downsample the TAC and add Noise
     _CtBinned = downSample(_Ct);
     addNoise(_noiseTar, _CtBinned);
-    qDebug() << "simEngine::generateTargetFRTM exit";
 }
 
 dVector simEngine::downSample(dVector original)
 {
-    qDebug() << "simEngine::downSample enter";
     dVector binned;
     // Downsample the TAC
     int nTime = original.size();
@@ -174,7 +158,6 @@ dVector simEngine::downSample(dVector original)
         average /= static_cast<double>(_lDownSample);
         binned.append(average);
     }
-    qDebug() << "simEngine::downSample exit";
     return binned;
 }
 void simEngine::addNoise(double noiseScale, dVector &timeVector)
@@ -195,12 +178,12 @@ double simEngine::GaussianRandomizer(double sigma, double cutoff)
     do
     {
       /* Choose x between +- the cutoff */
-      x = cutoff * ( -1. + 2. * RAND_0_1 );
+      x = cutoff * ( -1. + 2. * QRandomGenerator::global()->generateDouble() );
       /* Compute the Gaussian function of x. */
       double arg = - 0.5 * (x*x) /sigma/sigma;
       yGauss = exp( arg );
       /* Choose a random y from 0 to 1. */
-      y = RAND_0_1;
+      y = QRandomGenerator::global()->generateDouble();
     }
   while (y > yGauss);
 

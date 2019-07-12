@@ -17,17 +17,27 @@ private:
     PETRTM _PETRTM;
     QStringList _dataColumnNames;
     dMatrix _dataTable;
+
+
     double _BPndLowValue  = 1.0;
     double _BPndHighValue = 5.0;
     double _BPndStepValue = 0.5;
     double _timeLowValue  = 20.;
     double _timeHighValue = 80.;
+    int _nThreads = 4;
+    int _numberSimulationsPerThread = 1;
+
+    dVector _BP0Vector, _errBPndVector, _errChallVector, _tau2RefVector;
 
     QTabWidget *_tabTimeSpace;
     QWidget *_setupPage;
     QWidget *_targetPage;
     QWidget *_vsBPndPage;
     QWidget *_vsTimePage;
+
+    QComboBox *_threadsComboBox;
+    QStatusBar *_statusBar;
+    QProgressBar *_progressBar;
 
     // plots
     plotData *_plasmaPlot;   // setup page
@@ -43,7 +53,6 @@ private:
     plotData *_errBPndOrChallVsTimePlot;
 
     // setup page
-
     QVBoxLayout *_setupPlotLayout;
     // timing
     QLineEdit *_timeDuration;
@@ -100,6 +109,7 @@ private:
     QLineEdit *_BPndLow;
     QLineEdit *_BPndHigh;
     QLineEdit *_BPndStep;
+    QLineEdit *_numberSimulationsBPnd;
     QPushButton *_calculateBPndCurves;
     QPushButton *_clearBPndCurves;
     QCheckBox *_checkBoxBPndErrGraph;
@@ -128,9 +138,10 @@ private:
 
     void analyzeSimulatedTAC();
     QString analyzeString(double truth, double guess);
-    inline double percentageError(double truth, double guess) {return 100.*(guess/truth-1.);}
+    inline double percentageError(double guess, double truth) {return 100.*(guess/truth-1.);}
     double getChallengeMagFromAnalysis();
     double bestTau2RefForRTM2();
+    void finishedLieDetectorAllThreads();
 
 private slots:
     void changedGraphSizes(int iSelection);
@@ -170,7 +181,9 @@ private slots:
     void changedBPndLow();
     void changedBPndHigh();
     void changedBPndStep();
+    void changedNumberSimulationsBPnd();
     void calculateBPndCurves();
+    void calculateBPndCurvesInThreads();
     void clearBPndCurves();
     void changedVersusBPndGraphs();
 
@@ -178,6 +191,10 @@ private slots:
     void changedTimeHigh();
     void calculateTimeCurves();
     void clearTimeCurves();
+
+public slots:
+    void updateLieDetectorProgress(int iProgress);
+    void finishedLieDetectorOneThread(dVector errBPnd, dVector errChall, dVector tau2Ref);
 };
 
 #endif // SIMWINDOW_H
