@@ -29,9 +29,12 @@ void lieDetector::run()
     int iDiv = qMax(1,nSamplesTotal/10);
     qDebug() << "lieDetector::run 3.5" << iDiv << _BP0Values.size() << _numberSamples;
 
-    dVector errBPnd, errChall, tau2Ref;
-    for (int jBP=0; jBP<_BP0Values.size(); jBP++)
+    dMatrix errBPnd, errChall, tau2Ref;
+    int nBPValues = _BP0Values.size();
+    errBPnd.resize(nBPValues);   errChall.resize(nBPValues);  tau2Ref.resize(nBPValues);
+    for (int jBP=0; jBP<nBPValues; jBP++)
     {
+        errBPnd[jBP].resize(_numberSamples);    errChall[jBP].resize(_numberSamples);    tau2Ref[jBP].resize(_numberSamples);
         double BP0 = _BP0Values[jBP];
         _simulator.setBP0(BP0);
         for (int jSample=0; jSample<_numberSamples; jSample++)
@@ -52,28 +55,19 @@ void lieDetector::run()
 
             // update the BP error
             double guess = _PETRTM.getBP0InRun(0);
-            if ( jSample == 0 )
-                errBPnd.append(percentageError(guess,BP0));
-            else
-                errBPnd.last() += percentageError(guess,BP0);
+            errBPnd[jBP][jSample] = percentageError(guess,BP0);
 
             // update the challenge error
             double truth = _simulator.getChallengeMag();
             guess = getChallengeMagFromAnalysis();
-            if ( jSample == 0 )
-                errChall.append(guess - truth);
-            else
-                errChall.last() += guess - truth;
+            errChall[jBP][jSample] = guess - truth;
 
             // update the tau2Ref value
             if ( !_PETRTM.isRTM2() )
                 guess = _PETRTM.getTau2RefInRun(0);
             else
                 guess = 0.;
-            if ( jSample == 0 )
-                tau2Ref.append(guess);
-            else
-                tau2Ref.last() += guess;
+            tau2Ref[jBP][jSample] = guess;
         }
     }
     emit finishedLieDetector(errBPnd, errChall, tau2Ref);

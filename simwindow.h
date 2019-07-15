@@ -24,16 +24,17 @@ private:
     double _BPndStepValue = 0.5;
     double _timeLowValue  = 20.;
     double _timeHighValue = 80.;
-    int _nThreads = 4;
+    int _nThreads = 1;
     int _numberSimulationsPerThread = 1;
 
-    dVector _BP0Vector, _errBPndVector, _errChallVector, _tau2RefVector;
+    dVector _BP0Vector; // [# BP0 values]
+    dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix; // [# BP0 values][nSimulations]
 
     QTabWidget *_tabTimeSpace;
     QWidget *_setupPage;
     QWidget *_targetPage;
-    QWidget *_vsBPndPage;
-    QWidget *_vsTimePage;
+    QWidget *_sweepBPndPage;
+    QWidget *_sweepTimePage;
 
     QComboBox *_threadsComboBox;
     QStatusBar *_statusBar;
@@ -109,7 +110,11 @@ private:
     QLineEdit *_BPndLow;
     QLineEdit *_BPndHigh;
     QLineEdit *_BPndStep;
-    QLineEdit *_numberSimulationsBPnd;
+
+    QLabel *_nSamplesBPndPerThreadLabel;
+    QLineEdit *_nSamplesBPndPerThread;
+    QLabel *_nSamplesBPndLabel;
+    QLabel *_nSamplesBPnd;
     QPushButton *_calculateBPndCurves;
     QPushButton *_clearBPndCurves;
     QCheckBox *_checkBoxBPndErrGraph;
@@ -124,7 +129,7 @@ private:
 
     void createSetupPage();
     void createTargetPage();
-    void createVersusBPndPage();
+    void createSweepBPndPage();
     void createVersusTimePage();
 
     void updatePlasmaGraph();
@@ -142,8 +147,12 @@ private:
     double getChallengeMagFromAnalysis();
     double bestTau2RefForRTM2();
     void finishedLieDetectorAllThreads();
+    void setThreadVisibility(bool state);
+    double calculateMean(dVector vec);
+    double calculateStDev(double mean, dVector vec);
 
 private slots:
+    void changedNumberThreads(int indexInBox);
     void changedGraphSizes(int iSelection);
 
     void changedTimeDuration();
@@ -194,7 +203,7 @@ private slots:
 
 public slots:
     void updateLieDetectorProgress(int iProgress);
-    void finishedLieDetectorOneThread(dVector errBPnd, dVector errChall, dVector tau2Ref);
+    void finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref);
 };
 
 #endif // SIMWINDOW_H

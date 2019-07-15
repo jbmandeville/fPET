@@ -1583,6 +1583,7 @@ void PETRTM::fitDataByFRTMBasisFunctions(QVector<ROI_data> timeSeriesVector, dMa
 
     _nIterations=0;
     double lastSigma2 = getSigma2();
+    double tolerancePercent = 0.5;  // 0.5%
     while (goodIteration && moreIterations)
     {
         resetAndCalculateFRTMConvolution(true);
@@ -1591,7 +1592,7 @@ void PETRTM::fitDataByFRTMBasisFunctions(QVector<ROI_data> timeSeriesVector, dMa
         double sigma2 = getSigma2();
         double diff = qAbs(sigma2-lastSigma2)/lastSigma2 * 100.;
         lastSigma2 = sigma2;
-        moreIterations = diff > 0.05;  // 0.05%
+        moreIterations = diff > tolerancePercent;  // 0.5%
         goodIteration = true;
         for (int jRun=0; jRun<_nRuns; jRun++)
         {

@@ -23,7 +23,7 @@ private:
 
 signals:
     void progressLieDetector(int iProgress);
-    void finishedLieDetector(dVector errBPnd, dVector errChall, dVector tau2Ref);
+    void finishedLieDetector(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref);
 };
 
 #endif // LIEDETECTOR_H
