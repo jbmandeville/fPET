@@ -13,13 +13,13 @@ private:
     double _dt=0.1;
     int _lDownSample=10;
     // Infusion
-    double _magBolus=5.e5;
+    double _magBolus=15.e5;
     double _tauBolus=0.25;
     double _KBol=45.;
     // Elimination
-    double _fracFast=0.95;   // fraction of elimination that is fast
-    double _kFast=1./1.4;    // 1/T_alpha fast elimination
-    double _kSlow=1./30.;    // 1/T_beta  slow elimination
+    double _fracFast=0.9;   // fraction of elimination that is fast
+    double _kFast=1./1.2;    // 1/T_alpha fast elimination
+    double _kSlow=1./20.;    // 1/T_beta  slow elimination
     double _fracPlasma=0.0 ; // CBV fraction (set to 0 to ignore plasma)
     // Reference region
     double _K1Ref=1./15.;
