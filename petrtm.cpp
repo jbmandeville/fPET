@@ -5,6 +5,7 @@
 #include <qmath.h>
 #include <QTextStream>
 #include <QDebug>
+#include <QMutex>
 #include "io.h"
 #include "generalglm.h"
 #include "petrtm.h"
