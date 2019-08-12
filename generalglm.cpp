@@ -283,8 +283,6 @@ void GeneralGLM::init(int ntime , int nCoeff)
     if ( nCoeff != _nCoeff )
     {
         _nCoeff = nCoeff;
-        _beta_c.fill(0.,_nCoeff);
-        _sem_c.fill(0.,_nCoeff);
         _XTWXm1_cc.resize(_nCoeff);
         _XTWXm1XTW_ct.resize(_nCoeff);
         for (int jc=0; jc<_nCoeff; jc++)
@@ -686,7 +684,7 @@ int GeneralGLM::getEventCoefficient(QChar eventID, int iOccurrence)
 iVector GeneralGLM::getEventCoefficients(QChar eventID )
 {
     int nCoeffPerEvent=0;
-    for (int jCoeff=0; jCoeff<getNumberCoefficients(); jCoeff++)
+    for (int jCoeff=0; jCoeff<_basisID.size(); jCoeff++)
         if ( _basisID[jCoeff] == eventID ) nCoeffPerEvent++;
     iVector eventCoefficients;
     if ( nCoeffPerEvent == 0 )
@@ -698,7 +696,7 @@ iVector GeneralGLM::getEventCoefficients(QChar eventID )
     {
         eventCoefficients.resize(nCoeffPerEvent);
         nCoeffPerEvent=0;
-        for (int jCoeff=0; jCoeff<getNumberCoefficients(); jCoeff++)
+        for (int jCoeff=0; jCoeff<_basisID.size(); jCoeff++)
         {
             if ( _basisID[jCoeff] == eventID )
             {

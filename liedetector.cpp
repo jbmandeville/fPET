@@ -29,12 +29,12 @@ void lieDetector::run()
     int iDiv = qMax(1,nSamplesTotal/10);
     qDebug() << "lieDetector::run 3.5" << iDiv << _BP0Values.size() << _numberSamples;
 
-    dMatrix errBPnd, errChall, tau2Ref;
+    dMatrix errBPnd, errChall, tau2Ref, errTau4;
     int nBPValues = _BP0Values.size();
-    errBPnd.resize(nBPValues);   errChall.resize(nBPValues);  tau2Ref.resize(nBPValues);
+    errBPnd.resize(nBPValues);   errChall.resize(nBPValues);  tau2Ref.resize(nBPValues);  errTau4.resize(nBPValues);
     for (int jBP=0; jBP<nBPValues; jBP++)
     {
-        errBPnd[jBP].resize(_numberSamples);    errChall[jBP].resize(_numberSamples);    tau2Ref[jBP].resize(_numberSamples);
+        errBPnd[jBP].resize(_numberSamples); errChall[jBP].resize(_numberSamples); tau2Ref[jBP].resize(_numberSamples); errTau4[jBP].resize(_numberSamples);
         double BP0 = _BP0Values[jBP];
         _simulator.setBP0(BP0);
         for (int jSample=0; jSample<_numberSamples; jSample++)
@@ -49,7 +49,7 @@ void lieDetector::run()
                 tissueVector[0][jt] = _simulator.getCtDown(jt);
             }
             _PETRTM.setReferenceRegion(refRegion);
-            _PETRTM.setTissueVector(true,tissueVector);
+            _PETRTM.setTissueVector(tissueVector);
             _PETRTM.prepare();
             _PETRTM.fitData(tissueVector);
 
@@ -62,6 +62,11 @@ void lieDetector::run()
             guess = getChallengeMagFromAnalysis();
             errChall[jBP][jSample] = guess - truth;
 
+            // update the k4 error
+            truth = _simulator.getTau4();
+            guess = _PETRTM.getTau4InRun(0);
+            errTau4[jBP][jSample] = percentageError(guess,truth);
+
             // update the tau2Ref value
             if ( !_PETRTM.isRTM2() )
                 guess = _PETRTM.getTau2RefInRun(0);
@@ -70,7 +75,7 @@ void lieDetector::run()
             tau2Ref[jBP][jSample] = guess;
         }
     }
-    emit finishedLieDetector(errBPnd, errChall, tau2Ref);
+    emit finishedLieDetector(errBPnd, errChall, tau2Ref, errTau4);
     qDebug() << "lieDetector::run exit";
 }
 

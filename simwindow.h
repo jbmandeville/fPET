@@ -28,7 +28,7 @@ private:
     int _numberSimulationsPerThread = 1;
 
     dVector _BP0Vector; // [# BP0 values]
-    dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix; // [# BP0 values][nSimulations]
+    dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix; // [# BP0 values][nSimulations]
 
     QTabWidget *_tabTimeSpace;
     QWidget *_setupPage;
@@ -50,6 +50,7 @@ private:
     plotData *_errBPndPlot;  // vsBPnd page
     plotData *_errChallPlot; // vsBPnd page
     plotData *_tau2RefPlot;  // vsBPnd page
+    plotData *_errk4Plot;
 
     plotData *_errBPndOrChallVsTimePlot;
 
@@ -76,6 +77,7 @@ private:
     // reference region
     QLineEdit *_tau2Ref;
     QLineEdit *_tau1Ref;
+    QLineEdit *_plasmaFracRef;
     QLineEdit *_noiseRef;
     QComboBox *_dataRefRegion;
     QPushButton *_calcRRMatch;
@@ -84,6 +86,7 @@ private:
     QLineEdit *_BPnd;
     QLineEdit *_R1;
     QLineEdit *_tau4;
+    QLineEdit *_plasmaFracTar;
     QLineEdit *_noiseTar;
     QLineEdit *_challengeTime;
     QLineEdit *_challengeMag;
@@ -94,7 +97,8 @@ private:
     QLineEdit *_tau4Analysis;
     QLabel *_tau2RefAnalysisLabel;
     QLabel *_tau4AnalysisLabel;
-    QCheckBox *_includeChallenge;
+    QCheckBox *_fitk4;
+    QCheckBox *_fitChallenge;
     // errors
     QLabel *_errorBPnd;
     QLabel *_errork2;
@@ -105,6 +109,8 @@ private:
     QLabel *_errorTau2RefLabel;
     QLabel *_errorChallenge;
     QLabel *_errorChallengeLabel;
+    QLabel *_errork4;
+    QLabel *_errork4Label;
 
     // vsBPnd page
     QLineEdit *_BPndLow;
@@ -119,6 +125,7 @@ private:
     QPushButton *_clearBPndCurves;
     QCheckBox *_checkBoxBPndErrGraph;
     QCheckBox *_checkBoxChallErrGraph;
+    QCheckBox *_checkBoxk4ErrGraph;
     QCheckBox *_checkBoxTau2RefGraph;
 
     // vsTime page
@@ -150,6 +157,7 @@ private:
     void setThreadVisibility(bool state);
     double calculateMean(dVector vec);
     double calculateStDev(double mean, dVector vec);
+    void enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool enable);
 
 private slots:
     void changedNumberThreads(int indexInBox);
@@ -168,6 +176,7 @@ private slots:
 
     void changedTau2Ref();
     void changedTau1Ref();
+    void changedPlasmaFracRef();
     void changedNoiseRef();
     void changedDataRefRegion(int indexInBox);
 
@@ -179,12 +188,14 @@ private slots:
     void changedTau4();
     void changedChallengeTime();
     void changedChallengeMag();
+    void changedPlasmaFracTar();
     void changedNoiseTar();
 
     void calculateRRMatch();
 
     void changedTau2RefAnalysis();
     void changedTau4Analysis();
+    void changedCheckBoxFitk4(bool state);
     void changedCheckBoxChallenge(bool state);
 
     void changedBPndLow();
@@ -203,7 +214,7 @@ private slots:
 
 public slots:
     void updateLieDetectorProgress(int iProgress);
-    void finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref);
+    void finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4);
 };
 
 #endif // SIMWINDOW_H

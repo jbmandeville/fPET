@@ -63,7 +63,8 @@ void simEngine::generateReferenceTAC()
             double dCrdt = _K1Ref * Cp - _k2Ref * Cr;
             Cr += dCrdt * _dt;
         }
-        _Cr.append(Cr + _fracPlasma * Cp);
+        // Cp is conc(tracer)/volume(blood), whereas Cr is conc(tracer)/volume(tissue), so multiple Cp by volume(blood)/volume(tissue)
+        _Cr.append(Cr + _percentPlasmaRef/100. * Cp);
     }
 
     // Downsample the TAC and add Noise
@@ -97,7 +98,7 @@ void simEngine::generateTargetSRTM()
             double dCtdt = _K1 * _Cp[jt] - k2a * Ct ;
             Ct += dCtdt * _dt;
         }
-        _Ct.append(Ct + _fracPlasma * _Cp[jt]);
+        _Ct.append(Ct + _percentPlasmaTar/100. * _Cp[jt]);
     }
 
     // Downsample the TAC and add Noise
@@ -137,7 +138,7 @@ void simEngine::generateTargetFRTM()
         }
         _Cf.append(Cf);
         _Cb.append(Cb);
-        _Ct.append(Cf + Cb + _fracPlasma * _Cp[jt]);
+        _Ct.append(Cf + Cb + _percentPlasmaTar/100. * _Cp[jt]);
     }
 
     // Downsample the TAC and add Noise
@@ -152,11 +153,15 @@ dVector simEngine::downSample(dVector original)
     int nTime = original.size();
     for ( int jt=0; jt<nTime; jt+=_lDownSample)
     {
+        double firstPoint = original[jt];
+        /*
         double average = 0.;
         for (int jDown=0; jDown<_lDownSample; jDown++)
             average += original[jt+jDown];
         average /= static_cast<double>(_lDownSample);
         binned.append(average);
+        */
+        binned.append(firstPoint);
     }
     return binned;
 }
@@ -188,4 +193,81 @@ double simEngine::GaussianRandomizer(double sigma, double cutoff)
   while (y > yGauss);
 
   return( x );
+}
+
+dVector simEngine::FRTMNewAnalyticalSolution()
+{
+    int nTime = _CpBinned.size();
+    dVector convolution = calculateConvolution(_CtBinned,true);
+
+    dVector Ct; Ct.resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+        Ct[jt] = _R1 * _CrBinned[jt] - _k2 * (integralOf(_CtBinned,jt,true) - integralOf(_CrBinned,jt,true))
+                + _k2*_k3 * integralOf(convolution,jt,true);
+    return Ct;
+}
+
+dVector simEngine::FRTMOldAnalyticalSolution()
+{
+    int nTime = _CpBinned.size();
+
+    // Calculate the derivative of the tissue vector
+    dVector tissDerivative = differentiateTissueVector();
+    dVector convolution = calculateConvolution(tissDerivative,true);
+    double k2a = _k2 / (1. + _k3/_k4);
+
+    dVector CrTerm; CrTerm.resize(nTime);
+    dVector CtTerm; CtTerm.resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+    {
+        CrTerm[jt] = _CrBinned[jt]-convolution[jt];
+        CtTerm[jt] = _CtBinned[jt]-convolution[jt];
+    }
+
+    dVector Ct; Ct.resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+        Ct[jt] = _R1 * _CrBinned[jt] + _k2 * integralOf(CrTerm,jt,true) - k2a * integralOf(CtTerm,jt,true);
+    return Ct;
+}
+
+double simEngine::integralOf(dVector tissue, int iTime, bool downSample)
+{
+    double integral=0;
+    double dt = _dt;
+    if ( downSample ) dt *= static_cast<double>(_lDownSample);
+    for ( int jt=0; jt<=iTime; jt++)
+        integral += tissue[jt] * dt;
+    return integral;
+}
+
+dVector simEngine::differentiateTissueVector()
+{
+    int nTime = _CtBinned.size();
+    double dt = _dt * _lDownSample;
+    dVector derivative;  derivative.resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+    {
+        if ( jt != 0. )
+            derivative[jt] = (_CtBinned[jt] - _CtBinned[jt-1]) / dt;
+        else
+            derivative[jt] = _CtBinned[jt] / dt;
+    }
+    return derivative;
+}
+dVector simEngine::calculateConvolution(dVector tissue, bool downSample)
+{
+    int nTime = tissue.size();
+    double dt = _dt;
+    if ( downSample ) dt *= static_cast<double>(_lDownSample);
+    dVector convolution;  convolution.fill(0.,nTime);
+    for (int jt=0; jt<nTime; jt++)
+    {
+        double time = dt * jt;  // probably need to shift by 1/2 bin
+        for ( int jtPrime=0; jtPrime<=jt; jtPrime++ )
+        { // integrate from 0 to current time in run (=iTime_run & time)
+            double timePrime = dt * jtPrime;
+            convolution[jt] += tissue[jtPrime] * qExp(-(_k3+_k4)*(time-timePrime)) * dt;
+        } // jtPrime
+    } // jt
+    return convolution;
 }

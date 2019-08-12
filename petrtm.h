@@ -9,11 +9,11 @@ enum RTMModelTypes
 {
     RTM_SRTM3,    // 3-parameter SRTM:  R1, k2, k2a (GLM)
     RTM_SRTM2,    // 2-parameter SRTM:      k2, k2a (GLM)
-    RTM_rFRTM3,   // 3-parameter rFRTM: R1, k2, k2a (iterative)
-    RTM_rFRTM2,   // 2-parameter rFRTM:     k2, k2a (iterative)
-    RTM_SRTM2_R1, // 2-parameter SRTM:  R1, k2      (GLM)
-    RTM_SRTM2x2,  // 2-parameter iterative SRTM that alternates between RTM_SRTM2 and RTM_SRTM2_R1
-    RTM_rFRTM2_R1 // 2-parameter rFRTM: R1, k2      (GLM)
+    RTM_SRTM2Fit, // 2-parameter SRTM:      k2, k2a (iterative) using fit value of tau2Ref
+    RTM_rFRTM3,   // 3-parameter rFRTM: R1, k2, k2a (iterative) as published (using dCt/dt X E)
+    RTM_rFRTM2,   // 2-parameter rFRTM:     k2, k2a (iterative) as published (using dCt/dt X E)
+    RTM_rFRTM3New,// 3-parameter rFRTM: R1, k2, k2a (iterative) using fixed k4 to determine BPnd by formulation "k2a"=k2*k4*BPnd
+    RTM_rFRTM2New// 2-parameter rFRTM:     k2, k2a (iterative) using fixed k4 to determine BPnd by formulation "k2a"=k2*k4*BPnd
 };
 
 class PETRTM : public GeneralGLM    // for multi-threading, use no pointers
@@ -21,7 +21,6 @@ class PETRTM : public GeneralGLM    // for multi-threading, use no pointers
 
 private:
     bool _visibleInGUI=false;
-    bool _oneIterationOnly = false;
 
     QStringList *_warningErrors;
     QStringList *_fatalErrors;
@@ -29,12 +28,9 @@ private:
     int _referenceRegionTableColumn=0;  // >0 means take RR from table; otherwise, take RR from overlay
 
     // overall
-    int _modelRTM=RTM_SRTM3;
-    bool _calibratingTau4=false;
+    RTMModelTypes _modelRTM=RTM_SRTM3;
     int _PETWeightingModel=Weights_Uniform;
-    double _tau4Default=10.;
-    dVector _tau4;
-    int _nIterations=0;
+    double _tau4FRTMDefault=10.;
     double _smoothingScale=0.;
     bool _dCrdtIncluded=false;
     bool _referenceRegionIsDefined=false;
@@ -50,9 +46,11 @@ private:
     cVector _k2EventID;             // [_nRuns]; always required
     cVector _k2aEventID;            // [_nRuns]; always required
     cVector _dCrdtEventID;          // [_nRuns]; always required
-    dVector _tau2RefSRTM;           // [_nRuns]
-    dVector _tau2RefFRTM;           // [_nRuns];
-    dMatrix _BPnd;                  // [_nRuns][_nTimePerRun]
+    dVector _tau4Fixed;             // [_nRuns]
+    dVector _tau2RefSRTMFixed;      // [_nRuns]
+    dVector _tau2RefFRTMFixed;      // [_nRuns]
+    dMatrix _tau2RefSRTMCal;        // [_nRuns][3], with 0,1,2 = tau2 fit using polynomial in BPnd to powers 0,1,2
+    double _tau2RefSRTMCalOffset=0.9; // Fraction of SRTM2 value of 1/k2' relative to regularized SRTM3 value
     iVector _R1EventCoefficient;    // [_nRuns]
     iVector _k2EventCoefficient;    // [_nRuns]
     iVector _k2aEventCoefficient;   // [_nRuns]
@@ -62,8 +60,8 @@ private:
     // challenges
     cVector _challengeEventID; // [_maxChallenges];
     iVector _challengeShape;   // [_maxChallenges]
-    dVector _tau;              // [_maxChallenges]
-    dVector _alpha;            // [_maxChallenges]
+    dVector _challengeTau;              // [_maxChallenges]
+    dVector _challengeAlpha;            // [_maxChallenges]
     iMatrix _challengeRun;     // [_maxChallenges][_maxStimuli]
     dMatrix _challengeOn;      // [_maxChallenges][_maxStimuli]
     dMatrix _challengeOff;     // [_maxChallenges][_maxStimuli]
@@ -80,10 +78,16 @@ private:
     dMatrix _tissRegionDeriv;         // [_nRuns][_nTimeInRun]
     dMatrix _frtmConvolution;         // [_nRuns][_nTimeInRun]; potentially a fitted version of raw
     dMatrix _frtmConvolutionRaw;      // [_nRuns][_nTimeInRun]; for use with modified basis functions
-    dMatrix _frtmConvolutionRelative; // [_nRuns][_nTimeInRun]; rescaled to max 1 for weighting
+    dMatrix _frtmConvolutionTest;     // [_nRuns][_nTimeInRun]; for use with modified basis functions
 
-    // vector of length _nCoeff (= # events)
-    iVector _challengeIndex;    // [_nCoeff]; index into challenge vectors
+    // iterative methods
+    dVector _BPndForIterations;          // [_nRuns]; use this for  1) SRTM2Fit (iterative BPnd), and 2) RTM_rFRTM2New with _fitk4UsingFixedBPnd
+    dVector _tau4FromFRTMUsingFixedBPnd; // [_nRuns]
+    int _nIterations=0;
+    bool _fitk4UsingFixedBPnd=false;
+
+    // vector of length nCoeff (= # events)
+    iVector _challengeIndex;    // [nCoeff]; index into challenge vectors
 
     // These matrices keep track of matching k2 & k2a events in order to make BP into a meta-GLM parameter
     iMatrix _iCoeffInCondition;       // [nconditions][nCoeffInCondition]
@@ -111,12 +115,19 @@ private:
     void integrateByRun(dMatrix &basisFunction );
     void differentiateByRun(dMatrix &basisFunction );
 
+    void fitDataByGLM(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
+    void fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
+    void fitDataByGLMPlusLineScan(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
+    void fitWLSDuringIteration(dVector &data, bool computeSigma2);
     void createAllBasisFunctions();
     void createRunBasisFunction(bool newTAC, QChar eventID, dVector &basis);
-    void createChallengeBasisFunction(int iCoeff, dVector &basis);
+    void createChallengeBasisFunction(bool newTAC, int iCoeff, dVector &basis);
     void createChallengeShape(int iRun, int indexChallenge, dVector &shape);
 
-    void recreateAllFRTMBasisFunctions();
+    void recreateAllBasisFunctions(bool newTAC);
+
+    int readGLMFileOldFormat(int iRun, QString fileName);
+    int readGLMFileNewFormat(int iRun, QString fileName);
 
 public:
     QString _refRegionName;
@@ -128,24 +139,27 @@ public:
     QVector<QString> _frameFiles; // [_nRuns]
 
     void prepare();
-    void resetAndCalculateFRTMConvolution(bool calculateConvolution);
+    void calculateFRTMConvolution(dMatrix inputVector, bool newTAC);
+    void calculateBPndOrK4ForIteration();
 
     void fitData(dMatrix timeSeriesVector);
     void fitData(dMatrix timeSeriesVector, dMatrix &yFit);
     void fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
-    void fitDataByGLM(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
-    void fitDataByFRTMBasisFunctions(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
-    void fitDataByIterativeAlternating2ParametersModels(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
-    void switchToAlternateModel_rFRTM2();
     int readTimeBinsFile(int iRun, QString fileName);
+    int readTimeModel(QString fileName);
+    int readGLMFile(int iRun, QString fileName);
     QString createConditions();
     void definePETConditions(QString conditionString);
     void updateConditions();
-    inline bool isSRTM() {return _modelRTM == RTM_SRTM2  || _modelRTM == RTM_SRTM3  || _modelRTM == RTM_SRTM2x2 || _modelRTM == RTM_SRTM2_R1;}
-    inline bool isFRTM() {return _modelRTM == RTM_rFRTM2 || _modelRTM == RTM_rFRTM3 || _modelRTM == RTM_rFRTM2_R1;}
-    inline bool isRTM2_k2a() {return _modelRTM == RTM_SRTM2     || _modelRTM == RTM_rFRTM2;}
-    inline bool isRTM2_R1()  {return _modelRTM == RTM_SRTM2_R1  || _modelRTM == RTM_rFRTM2_R1;}
-    inline bool isRTM2()     {return isRTM2_k2a() || isRTM2_R1();}
+    inline bool isSRTM() {return _modelRTM == RTM_SRTM2  || _modelRTM == RTM_SRTM3  || _modelRTM == RTM_SRTM2Fit;}
+    inline bool isFRTM() {return _modelRTM == RTM_rFRTM2     || _modelRTM == RTM_rFRTM3
+                ||               _modelRTM == RTM_rFRTM3New || _modelRTM == RTM_rFRTM2New;}
+    inline bool isFRTMOld() {return _modelRTM == RTM_rFRTM3 || _modelRTM == RTM_rFRTM2;}
+    inline bool isFRTMNew() {return _modelRTM == RTM_rFRTM3New || _modelRTM == RTM_rFRTM2New;}
+    inline bool isRTM3() {return _modelRTM == RTM_SRTM3  || _modelRTM == RTM_rFRTM3 || _modelRTM == RTM_rFRTM3New;}
+    inline bool isRTM2() {return _modelRTM == RTM_SRTM2  || _modelRTM == RTM_rFRTM2 || _modelRTM == RTM_rFRTM2New || _modelRTM == RTM_SRTM2Fit;}
+    inline bool isSRTMReg() {return _modelRTM == RTM_SRTM2Fit;}
+    inline bool isFRTMFitk4() {return isFRTMNew() && _fitk4UsingFixedBPnd;}
     void saveTimeModelFiles(QString dirName, QStringList dataFileName);
     void writeGLMFile(int iRun, QString fileName, bool allSameTau4);
     void writeGLMFileOldFormat(int iRun, QString fileName);
@@ -154,11 +168,11 @@ public:
     void calculateTau2PrimeForSRTM2ForBiasFreeBPND(int iRun);
 
     // setters
+    inline void setFitk4State(bool state) {_fitk4UsingFixedBPnd = state;}
     inline void setErrorLists(QStringList *warningErrors, QStringList *fatalErrors) {_warningErrors = warningErrors; _fatalErrors = fatalErrors;}
     inline void setEventIndexForAveraging(int indexAv) {_challengeForStimAv = indexAv;}
     inline void setNPreForAveraging(int nPre) {_nPreForChallAv = nPre;}
     inline void setNPostForAveraging(int nPost) {_nPostForChallAv = nPost;}
-    inline void setOneIteration(bool state) {_oneIterationOnly=state;}
     inline void setGUIVisibility(bool state) {_visibleInGUI=state;}
     inline void defineTimeModelFileConditions() {definePETConditions(_petConditionsFromTimeModelFile);}
     void setIgnoredPoints(int iRun, bool resetWeights, QString ignoreString);
@@ -170,19 +184,21 @@ public:
     void setChallengeOffset(int indexChallenge, int indexStimulus, double time);
     void setChallengeTau(int indexChallenge, double tau);
     void setChallengeAlpha(int indexChallenge, double alpha);
-    void setReferenceRegion(dMatrix timeBins, dMatrix referenceRegionRaw);
     void setReferenceRegion(dMatrix referenceRegionRaw);
+    void setReferenceRegion(dMatrix timeBins, dMatrix referenceRegionRaw);
     void setReferenceRegionFromTableColumn(int iColumn);
-    void setTissueVector(bool newTAC, dMatrix tissueRegion);
-    void setRTMModelType(QString model);
+    void setTissueVector(dMatrix tissueRegion);
     void setRTMModelType(RTMModelTypes model);
+    void setRTMModelType(QString model);
     void setWeightingModel(int whichWeightingModel);
     void setWeightsInRun(int iRun);
     void setSmoothingScale(double smoothingScale);
-    inline void setTau4(int iRun, double tau4) {_tau4[iRun] = tau4; setPrepared(false);}
-    inline void setBPnd(int iRun, int iTime, double BPnd) {_BPnd[iRun][iTime] = BPnd; setPrepared(false);}
-    inline void setTau2RefSRTM(int iRun, double tau2Ref) {_tau2RefSRTM[iRun] = tau2Ref; setPrepared(false);}
-    inline void setTau2RefFRTM(int iRun, double tau2Ref) {_tau2RefFRTM[iRun] = tau2Ref; setPrepared(false);}
+    inline void setTau4(int iRun, double tau4) {_tau4Fixed[iRun] = tau4; setPrepared(false);}
+    inline void setTau2RefSRTM(int iRun, double tau2Ref) {_tau2RefSRTMFixed[iRun] = tau2Ref; setPrepared(false);}
+    inline void setTau2RefFRTM(int iRun, double tau2Ref) {_tau2RefFRTMFixed[iRun] = tau2Ref; setPrepared(false);}
+    inline void setTau2RefSRTMCal(int iRun, double poly0, double poly1, double poly2)
+    {_tau2RefSRTMCal[iRun][0] = poly0; _tau2RefSRTMCal[iRun][1] = poly1; _tau2RefSRTMCal[iRun][2] = poly2; setPrepared(false);}
+    inline void setTau2RefSRTMCalOffset(double value) {_tau2RefSRTMCalOffset=value; setPrepared(false);}
     void setTau2Ref(int iRun, double tau2Ref);
 
     void setR1EventID(int iRun, QChar ID);
@@ -190,11 +206,11 @@ public:
     inline void setk2EventID(int iRun, QChar ID) {_k2EventID[iRun] = ID;   setPrepared(false); setBasisFunctionsChanged();}
     inline void setk2aEventID(int iRun, QChar ID) {_k2aEventID[iRun] = ID; setPrepared(false); setBasisFunctionsChanged();}
     inline void setInclusionOfdCrdt(bool state) {_dCrdtIncluded = state;   setPrepared(false); setBasisFunctionsChanged();}
-    inline void setTau4Calibration(bool state) {_calibratingTau4 = state;}
     inline void setReferenceRegionName(QString name) {_refRegionName = name;}
     inline void setBrainRegionName(QString name) {_brainRegionName = name;}
 
     // getters
+    inline bool getFitk4State() {return _fitk4UsingFixedBPnd;}
     inline int getNumberColumns(int iRun) {if (_columnNames.size() > 0) return _columnNames[iRun].count(); else return 0;}
     inline QString getColumnName(int iRun, int iColumn) {return _columnNames[iRun].at(iColumn);}
     inline bool useReferenceRegionFromOverlay() {return _referenceRegionTableColumn <= 0;}
@@ -204,7 +220,6 @@ public:
     inline int getNPreForAveraging() {return _nPreForChallAv;}
     inline int getNPostForAveraging() {return _nPostForChallAv;}
     void getStimAveragingVectors(dVector &xForChallAv, dVector &yForChallAv, dVector &ySEMForChallAv, dVector &yFitForChallAv);
-    inline bool isOneIteration() {return _oneIterationOnly;}
     inline bool isVisible() {return _visibleInGUI;}
     double getTimeInRun(int iRun, int iTime);
     inline int getNumberRuns() {return _nRuns;}
@@ -214,15 +229,18 @@ public:
     inline double getChallengeOnset(int indexChallenge, int indexStimulus) {return _challengeOn[indexChallenge][indexStimulus];}
     inline double getChallengeOffset(int indexChallenge, int indexStimulus) {return _challengeOff[indexChallenge][indexStimulus];}
     inline int getChallengeShape(int indexChallenge) {return _challengeShape[indexChallenge];}
-    inline double getChallengeTau(int indexChallenge) {return _tau[indexChallenge];}
-    inline double getChallengeAlpha(int indexChallenge) {return _alpha[indexChallenge];}
+    inline double getChallengeTau(int indexChallenge) {return _challengeTau[indexChallenge];}
+    inline double getChallengeAlpha(int indexChallenge) {return _challengeAlpha[indexChallenge];}
     inline double getSmoothingScale() {return _smoothingScale;}
-    inline double getTau4(int iRun) {return _tau4[iRun];}
-    inline int getNumberFRTMIterations() {return _nIterations;}
+    inline double getTau4(int iRun) {return _tau4Fixed[iRun];}
+    inline int getNumberIterations() {return _nIterations;}
     inline bool getInclusionOfdCrdt() {return _dCrdtIncluded;}
     inline QString getTimeFrameFileName(int iRun) {return _frameFiles[iRun];}
-    inline double getTau2RefSRTMInRun(int iRun) {return _tau2RefSRTM[iRun];}
-    inline double getTau2RefFRTMInRun(int iRun) {return _tau2RefSRTM[iRun];}
+    inline double getTau2RefSRTMInRun(int iRun) {return _tau2RefSRTMFixed[iRun];}
+    inline double getTau2RefFRTMInRun(int iRun) {return _tau2RefFRTMFixed[iRun];}
+    inline double getTau2RefSRTMCalInRun(int iRun, double BPnd)  // return a quadratic polynomial in BPnd
+    {return _tau2RefSRTMCal[iRun][0] + _tau2RefSRTMCal[iRun][1] * BPnd + _tau2RefSRTMCal[iRun][2] * BPnd * BPnd;}
+    inline double getTau2RefSRTMCalOffset() {return _tau2RefSRTMCalOffset;}
     inline bool isReferenceRegionDefined() {return _referenceRegionIsDefined;}
 
     bool getFrameStatus();
@@ -257,6 +275,7 @@ public:
     dPoint2D getBPndVersusTime(int iFile, int iTime);
     dPoint2D getBPndInCurrentCondition();
     double getBP0InRun(int iRun);
+    double getTau4InRun(int iRun);
     dPoint2D averageParameter(iVector iCoeffVector);
     dPoint2D getk2RefInCurrentCondition();
     dPoint2D getTau2RefInCurrentCondition();
@@ -276,6 +295,7 @@ public:
     inline bool currentconditionIsR1Type() {return getCurrentConditionShape() == Type_R1;}
     inline bool currentconditionIsdCrdtType() {return getCurrentConditionShape() == Type_dCrdt;}
     dPoint2D getValueAndErrorForCurrentCondition();
+    inline double getFRTMConvolutionTest(int iFile, int iTime) {return _frtmConvolutionTest[iFile][iTime];}
     inline double getFRTMConvolution(int iFile, int iTime) {return _frtmConvolutionRaw[iFile][iTime];}
     inline double getFRTMConvolutionFit(int iFile, int iTime) {return _frtmConvolution[iFile][iTime];}
     bool isValidID(int iRun, int iType, QChar eventID);

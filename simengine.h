@@ -20,7 +20,8 @@ private:
     double _fracFast=0.9;   // fraction of elimination that is fast
     double _kFast=1./1.2;    // 1/T_alpha fast elimination
     double _kSlow=1./20.;    // 1/T_beta  slow elimination
-    double _fracPlasma=0.0 ; // CBV fraction (set to 0 to ignore plasma)
+    double _percentPlasmaRef=0.0 ; // CBV fraction (set to 0 to ignore plasma)
+    double _percentPlasmaTar=0.0 ; // CBV fraction (set to 0 to ignore plasma)
     // Reference region
     double _K1Ref=1./15.;
     double _k2Ref=1./2.5;
@@ -57,6 +58,11 @@ private:
     void addNoise(double noiseScale, dVector &downSampled);
     double GaussianRandomizer(double sigma, double cutoff);
 
+    // calculate analytical solutions
+    double integralOf(dVector tissue, int iTime, bool downSample);
+    dVector differentiateTissueVector();
+    dVector calculateConvolution(dVector tissue, bool downSample);
+
 public:
     simEngine();
     void run();
@@ -65,6 +71,8 @@ public:
     void generateTargetTAC();
     void generateTargetSRTM();
     void generateTargetFRTM();
+    dVector FRTMOldAnalyticalSolution();
+    dVector FRTMNewAnalyticalSolution();
 
     // setters
     inline void setSRTM()                     {_SRTM = true;}
@@ -95,6 +103,8 @@ public:
     inline void setNoiseTar(double value)     {_noiseTar = value;}
     inline void setChallengeTime(double value){_challengeTime  = value;}
     inline void setChallengeMag(double value) {_deltaBPPercent = value;}
+    inline void setPlasmaPercentRef(double value){_percentPlasmaRef = value;}
+    inline void setPlasmaPercentTar(double value){_percentPlasmaTar = value;}
 
     // getters
     inline bool getSRTM()           {return _SRTM;}
@@ -126,6 +136,8 @@ public:
     inline double getNoiseTar()     {return _noiseTar;}
     inline double getChallengeTime(){return _challengeTime;}
     inline double getChallengeMag() {return _deltaBPPercent;}
+    inline double getPlasmaPercentRef(){return _percentPlasmaRef;}
+    inline double getPlasmaPercentTar(){return _percentPlasmaTar;}
     // concentations
     inline double getCp(int iTime)      {return _Cp[iTime];}
     inline double getCr(int iTime)      {return _Cr[iTime];}
