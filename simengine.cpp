@@ -1,7 +1,9 @@
 #include "simengine.h"
 #include <QtMath>
 #include <QDebug>
-#include <QRandomGenerator>
+//#include <QRandomGenerator>
+
+#define RAND_0_1 (rand()/2147483647.)
 
 simEngine::simEngine()
 {
@@ -182,15 +184,17 @@ double simEngine::GaussianRandomizer(double sigma, double cutoff)
     double yGauss, y, x;
     do
     {
-      /* Choose x between +- the cutoff */
-      x = cutoff * ( -1. + 2. * QRandomGenerator::global()->generateDouble() );
-      /* Compute the Gaussian function of x. */
-      double arg = - 0.5 * (x*x) /sigma/sigma;
-      yGauss = exp( arg );
-      /* Choose a random y from 0 to 1. */
-      y = QRandomGenerator::global()->generateDouble();
+        /* Choose x between +- the cutoff */
+//        x = cutoff * ( -1. + 2. * QRandomGenerator::global()->generateDouble() );
+        x = cutoff * ( -1. + 2. * RAND_0_1 );
+        /* Compute the Gaussian function of x. */
+        double arg = - 0.5 * (x*x) /sigma/sigma;
+        yGauss = exp( arg );
+        /* Choose a random y from 0 to 1. */
+//        y = QRandomGenerator::global()->generateDouble();
+        y = RAND_0_1;
     }
-  while (y > yGauss);
+    while (y > yGauss);
 
   return( x );
 }
