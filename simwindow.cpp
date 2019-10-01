@@ -477,6 +477,7 @@ void SimWindow::createTargetPage()
     auto *analysisGroupBox = new QGroupBox("Target Region: analysis");
     QLabel *modelLabel      = new QLabel("RTM type");
     QLabel *weightLabel     = new QLabel("Weighting scheme");
+    QLabel *ignoreLabel     = new QLabel("Ignore points");
     _tau2RefAnalysisLabel   = new QLabel("Analysis 1/k2'");
     _tau4AnalysisLabel      = new QLabel("Analysis 1/k4");
     _modelType = new QComboBox();
@@ -488,8 +489,8 @@ void SimWindow::createTargetPage()
     _modelType->addItem("rFRTM3New");
     _modelType->addItem("rFRTM2New");
     enableComboBoxItem(_modelType,2,false);
-    enableComboBoxItem(_modelType,5,false);  // xxx tmp
-    enableComboBoxItem(_modelType,6,false);  // xxx tmp
+//    enableComboBoxItem(_modelType,5,false);  // xxx tmp
+//    enableComboBoxItem(_modelType,6,false);  // xxx tmp
     _modelType->setCurrentIndex(0);
     _weightType  = new QComboBox();
     _weightType->addItem("Uniform weights");
@@ -497,8 +498,10 @@ void SimWindow::createTargetPage()
     _weightType->addItem("11C");
     _weightType->addItem("Custom");
     _weightType->setToolTip("Set a weighting scheme for WLS");
+    _ignoreString     = new QLineEdit();
     _tau2RefAnalysis = new QLineEdit();
     _tau4Analysis    = new QLineEdit();
+    _ignoreString->setText("");
     _tau2RefAnalysis->setText(numberString.setNum(_simulator.getTau2Ref()));
     _tau4Analysis->setText(numberString.setNum(_simulator.getTau4()));
     _tau2RefAnalysis->setFixedWidth(editTextSize);
@@ -511,7 +514,7 @@ void SimWindow::createTargetPage()
     connect(_weightType, SIGNAL(currentIndexChanged(int)), this, SLOT(changedWeightType(int)));
     _fitk4 = new QCheckBox("fit k4?");
     _fitk4->setChecked(false);
-    _fitk4->setEnabled(false);  // xxx tmp
+//    _fitk4->setEnabled(false);  // xxx tmp
     _fitChallenge = new QCheckBox("fit challenge?");
     _fitChallenge->setChecked(false);
 
@@ -522,12 +525,15 @@ void SimWindow::createTargetPage()
     analysisLayout->addWidget(_fitk4,1,1);
     analysisLayout->addWidget(weightLabel,2,0);
     analysisLayout->addWidget(_weightType,2,1);
-    analysisLayout->addWidget(_tau2RefAnalysisLabel,3,0);
-    analysisLayout->addWidget(_tau2RefAnalysis,3,1);
-    analysisLayout->addWidget(_tau4AnalysisLabel,4,0);
-    analysisLayout->addWidget(_tau4Analysis,4,1);
+    analysisLayout->addWidget(ignoreLabel,3,0);
+    analysisLayout->addWidget(_ignoreString,3,1);
+    analysisLayout->addWidget(_tau2RefAnalysisLabel,4,0);
+    analysisLayout->addWidget(_tau2RefAnalysis,4,1);
+    analysisLayout->addWidget(_tau4AnalysisLabel,5,0);
+    analysisLayout->addWidget(_tau4Analysis,5,1);
     analysisGroupBox->setLayout(analysisLayout);
     analysisLayout->setSpacing(0);
+    connect(_ignoreString,     SIGNAL(editingFinished()), this, SLOT(changedIgnoreString()));
     connect(_tau2RefAnalysis,  SIGNAL(editingFinished()), this, SLOT(changedTau2RefAnalysis()));
     connect(_tau4Analysis,     SIGNAL(editingFinished()), this, SLOT(changedTau4Analysis()));
     connect(_fitChallenge,     SIGNAL(toggled(bool)),     this, SLOT(changedCheckBoxChallenge(bool)));
@@ -537,21 +543,27 @@ void SimWindow::createTargetPage()
     QLabel *errorBPndLabel  = new QLabel("BPnd ");
     QLabel *errork2Label    = new QLabel("k2   ");
     QLabel *errork2aLabel   = new QLabel("k2a  ");
+    _errordk2aLabel         = new QLabel("dk2a ");
     _errorR1Label           = new QLabel("R1   ");
     _errorTau2RefLabel      = new QLabel("1/k2'");
     _errorChallengeLabel    = new QLabel("Challenge");
     _errork4Label           = new QLabel("1/k4");
+    _sigmaLabel             = new QLabel("sigma");
     _errorBPnd      = new QLabel();
     _errork2        = new QLabel();
     _errork2a       = new QLabel();
+    _errordk2a      = new QLabel();
     _errorR1        = new QLabel();
     _errorTau2Ref   = new QLabel();
     _errorChallenge = new QLabel();
     _errork4        = new QLabel();
+    _sigma          = new QLabel();
     _errorChallengeLabel->setVisible(false);
     _errorChallenge->setVisible(false);
     _errork4Label->setVisible(false);
     _errork4->setVisible(false);
+    _errordk2a->setVisible(false);
+    _errordk2aLabel->setVisible(false);
     auto *errorLayout = new QGridLayout();
     errorLayout->addWidget(errorBPndLabel,0,0);
     errorLayout->addWidget(_errorBPnd,0,1);
@@ -559,14 +571,18 @@ void SimWindow::createTargetPage()
     errorLayout->addWidget(_errork2,1,1);
     errorLayout->addWidget(errork2aLabel,2,0);
     errorLayout->addWidget(_errork2a,2,1);
-    errorLayout->addWidget(_errorR1Label,3,0);
-    errorLayout->addWidget(_errorR1,3,1);
-    errorLayout->addWidget(_errorTau2RefLabel,4,0);
-    errorLayout->addWidget(_errorTau2Ref,4,1);
-    errorLayout->addWidget(_errorChallengeLabel,5,0);
-    errorLayout->addWidget(_errorChallenge,5,1);
-    errorLayout->addWidget(_errork4Label,6,0);
-    errorLayout->addWidget(_errork4,6,1);
+    errorLayout->addWidget(_errordk2aLabel,3,0);
+    errorLayout->addWidget(_errordk2a,3,1);
+    errorLayout->addWidget(_errorR1Label,4,0);
+    errorLayout->addWidget(_errorR1,4,1);
+    errorLayout->addWidget(_errorTau2RefLabel,5,0);
+    errorLayout->addWidget(_errorTau2Ref,5,1);
+    errorLayout->addWidget(_errorChallengeLabel,6,0);
+    errorLayout->addWidget(_errorChallenge,6,1);
+    errorLayout->addWidget(_errork4Label,7,0);
+    errorLayout->addWidget(_errork4,7,1);
+    errorLayout->addWidget(_sigmaLabel,8,0);
+    errorLayout->addWidget(_sigma,8,1);
     errorGroupBox->setLayout(errorLayout);
     errorLayout->setSpacing(0);
 
@@ -975,7 +991,7 @@ void SimWindow::updateReferenceGraph()
         _PETRTM.setk2aEventID(0,'a');
         int indexChallenge = _PETRTM.getEventIndex('c');
         _PETRTM.setChallengeShape(indexChallenge,Challenge_Sigmoid);
-        _PETRTM.setChallengeTau(indexChallenge,1.);
+        _PETRTM.setChallengeTau(indexChallenge,0.1);
         if ( firstTime )
         {
             _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
@@ -1029,6 +1045,7 @@ void SimWindow::updateTargetGraph()
     // update the RTM model
     _PETRTM.setTissueVector(tissueVector);
     _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
+//    _PETRTM.setIgnoredPoints(0,true,"20-n");  // xxx jbm
     _PETRTM.prepare();
     _PETRTM.fitData(tissueVector,fitVector);
     analyzeSimulatedTAC();
@@ -1054,22 +1071,6 @@ void SimWindow::updateTargetGraph()
         _targetPlot->setColor(Qt::green);
         for (int jt=0; jt<nTime; jt++)
             yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
-        _targetPlot->setData(xTime,yTAC);
-    }
-
-    // Add analytical solution
-    if ( _PETRTM.isFRTMOld() )
-    {
-//        _targetPlot->addCurve(0,"analytical");
-        _targetPlot->addCurve(0,"equivalent term?");
-        _targetPlot->setColor(Qt::blue);
-        for (int jt=0; jt<nTime; jt++)
-            yTAC[jt]  = _PETRTM.getFRTMConvolutionTest(0,jt);
-        /*
-        dVector analyticalSolution = _simulator.FRTMOldAnalyticalSolution();
-        for (int jt=0; jt<nTime; jt++)
-            yTAC[jt]  = analyticalSolution[jt];
-        */
         _targetPlot->setData(xTime,yTAC);
     }
 
@@ -1176,12 +1177,31 @@ void SimWindow::analyzeSimulatedTAC()
         double k4 = 1./_PETRTM.getTau4(0);
         double k2 = _simulator.getk2();
         double BP0 = _simulator.getBP0();
-        truth = k4 * k2 * BP0;
+//        truth = k4 * k2 * BP0;
+        truth = k2 * BP0;
     }
     else
         truth = _simulator.getk2a();
     guess = _PETRTM.getk2aInRun(0).x;
     _errork2a->setText(analyzeString(truth,guess));
+    QString valueString;
+    if ( _fitChallenge->isChecked() )
+    {
+        if ( _PETRTM.isFRTMNew() )
+        { // dk2k3
+            truth = _simulator.getdk2k3();
+            guess = _PETRTM.getdk2aInRun('c').x;
+            _errordk2a->setText(analyzeString(truth,guess));
+            qDebug() << "compare dk2a" << truth << guess;
+        }
+        else
+        { // dka2
+            truth = _simulator.getdk2a();
+            guess = _PETRTM.getdk2aInRun('c').x;
+            _errordk2a->setText(analyzeString(truth,guess));
+        }
+    }
+
     // R1
     truth = _simulator.getR1();
     guess = _PETRTM.getR1InRun(0).x;
@@ -1194,24 +1214,43 @@ void SimWindow::analyzeSimulatedTAC()
     qDebug() << "k2Ref =" << k2Ref.x << "±" << k2Ref.y << "with relative error" << k2Ref.y / k2Ref.x * 100.;
 
     // challenge
-    truth = _simulator.getChallengeMag();  // delta_BPnd abs
-    guess = getChallengeMagFromAnalysis();
-    QString valueString, diffString;
-    valueString.setNum(guess,'g',2);
-    if ( guess == 0. )
-        diffString = "----";
-    else
-        diffString.setNum(guess-truth,'g',2);
-    _errorChallenge->setText(valueString + " %, diff = " + diffString + " %");
+    if ( _fitChallenge->isChecked() )
+    {
+        truth = _simulator.getChallengeMag();  // delta_BPnd abs
+        guess = getChallengeMagFromAnalysis();
+        QString diffString;
+        valueString.setNum(guess,'g',2);
+        if ( guess == 0. )
+            diffString = "----";
+        else
+            diffString.setNum(guess-truth,'g',2);
+        _errorChallenge->setText(valueString + " %, diff = " + diffString + " %");
+    }
 
     // k4
-    truth = _simulator.getTau4();  // delta_BPnd abs
-    guess = _PETRTM.getTau4InRun(0);
-    valueString.setNum(guess,'g',2);
-    if ( guess == 0. )
-        _errork4->setText("----");
-    else
-        _errork4->setText(analyzeString(truth,guess));
+    if ( _fitk4->isChecked() )
+    {
+        truth = _simulator.getTau4();  // delta_BPnd abs
+        guess = _PETRTM.getTau4InRun(0);
+        valueString.setNum(guess,'g',2);
+        if ( guess == 0. )
+            _errork4->setText("----");
+        else
+            _errork4->setText(analyzeString(truth,guess));
+    }
+
+    /*
+    int nCoeff = _PETRTM.getNumberCoefficients();
+    qDebug() << "***" << nCoeff << "coefficients ***";
+    for (int jCoeff=0; jCoeff<nCoeff; jCoeff++)
+        qDebug() << "coefficient" << jCoeff << "=" << _PETRTM.getBeta(jCoeff);
+        */
+
+    // sigma2
+    double sigma = qSqrt(_PETRTM.getSigma2());
+    valueString.setNum(sigma,'g',1);
+    _sigma->setText(valueString);
+
     qDebug() << "SimWindow::analyzeSimulatedTAC exit";
 }
 double SimWindow::getChallengeMagFromAnalysis()
@@ -1224,6 +1263,8 @@ double SimWindow::getChallengeMagFromAnalysis()
         _PETRTM.evaluateCurrentCondition();
         double percentChange = _PETRTM.getBPndInCurrentCondition().x;
         percentChange *= 100./_PETRTM.getBP0InRun(0);
+        if ( _PETRTM.isFRTMNew() )
+            percentChange *= -1.;
         return percentChange;
     }
     else
@@ -1533,6 +1574,12 @@ void SimWindow::changedNoiseTar()
     bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
     setThreadVisibility(noisy);
 }
+void SimWindow::changedIgnoreString()
+{
+    QString stringEntered = _ignoreString->text();
+    _PETRTM.setIgnoredPoints(0,true,stringEntered);
+    updateAllGraphs();
+}
 void SimWindow::changedTau2RefAnalysis()
 {
     QString stringEntered = _tau2RefAnalysis->text();
@@ -1581,6 +1628,8 @@ void SimWindow::changedCheckBoxChallenge(bool state)
     _errorChallenge->setVisible(state);
     _checkBoxChallErrGraph->setChecked(state);
     _checkBoxChallErrGraph->setVisible(state);
+    _errordk2aLabel->setVisible(state);
+    _errordk2a->setVisible(state);
     clearTimeCurves();
 
     int indexChallenge = _PETRTM.getEventIndex('c');
@@ -2146,9 +2195,9 @@ void SimWindow::finishedLieDetectorAllThreads()
         _tau2RefPlot->setPointStyle(QCPScatterStyle::ssCross);
 
     _errk4Plot->addCurve(0,"1/k4");
-    _errChallPlot->setPointSize(5);
-    _errChallPlot->setColor(colors[iColor]);
-    _errChallPlot->setErrorBars(1);
+    _errk4Plot->setPointSize(5);
+    _errk4Plot->setColor(colors[iColor]);
+    _errk4Plot->setErrorBars(1);
 
     dVector xVector;
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)

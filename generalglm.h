@@ -118,7 +118,8 @@ public:
     void replaceBasisFunction( int iBasis, dVector X_t);   // define/replace existing basis function
     void addBasisFunction( dVector X_t);
     void addOrInsertBasisFunction( int iBasis, dVector X_t);
-    void fitWLS(dVector &data, bool computeSigma2);
+    void fitWLS(dVector data) { fitWLS(data, true);}  // a convenience function for most situations (error not known a-priori)
+    void fitWLS(dVector data, bool computeSigma2);
     void calculatePseudoInverse();
     void removeCoefficient(int iCoeff, dVector &data);
     void removeCoefficient(int iCoeff, dVector &data, dVector &fit);

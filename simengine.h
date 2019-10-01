@@ -132,6 +132,10 @@ public:
     inline double getk2()           {return _k2;}
     inline double getk3()           {return _k3;}
     inline double getk2a()          {return _k2/(1.+_BP0);}
+    inline double getk2k3()         {return _k2 * _k3;}  // or k2 * k4 * BPnd
+    double getdk2a();
+    double getdk2k3();
+
     inline double getNoiseRef()     {return _noiseRef;}
     inline double getNoiseTar()     {return _noiseTar;}
     inline double getChallengeTime(){return _challengeTime;}

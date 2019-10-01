@@ -417,7 +417,7 @@ void GeneralGLM::addOrInsertBasisFunction( int iBasis, dVector X_t)
     _basisFunctionsChanged=true;
     _prepared = false;
 }
-void GeneralGLM::fitWLS(dVector &data, bool computeSigma2)
+void GeneralGLM::fitWLS(dVector data, bool computeSigma2)
 { // computeSigma2: if true, find sigma2 from residue; else assume sigma2 is known and used in weighting matrix
     // If any sigma values are zero, ignore the voxel.
     bool allZeroes=true;

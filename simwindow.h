@@ -93,6 +93,7 @@ private:
     // target region analysis
     QComboBox *_modelType;
     QComboBox *_weightType;
+    QLineEdit *_ignoreString;
     QLineEdit *_tau2RefAnalysis;
     QLineEdit *_tau4Analysis;
     QLabel *_tau2RefAnalysisLabel;
@@ -103,6 +104,7 @@ private:
     QLabel *_errorBPnd;
     QLabel *_errork2;
     QLabel *_errork2a;
+    QLabel *_errordk2a;
     QLabel *_errorR1;
     QLabel *_errorR1Label;
     QLabel *_errorTau2Ref;
@@ -111,6 +113,9 @@ private:
     QLabel *_errorChallengeLabel;
     QLabel *_errork4;
     QLabel *_errork4Label;
+    QLabel *_sigma;
+    QLabel *_sigmaLabel;
+    QLabel *_errordk2aLabel;
 
     // vsBPnd page
     QLineEdit *_BPndLow;
@@ -193,6 +198,7 @@ private slots:
 
     void calculateRRMatch();
 
+    void changedIgnoreString();
     void changedTau2RefAnalysis();
     void changedTau4Analysis();
     void changedCheckBoxFitk4(bool state);

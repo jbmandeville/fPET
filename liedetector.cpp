@@ -87,6 +87,8 @@ double lieDetector::getChallengeMagFromAnalysis()
         _PETRTM.evaluateCurrentCondition();
         double percentChange = _PETRTM.getBPndInCurrentCondition().x;
         percentChange *= 100./_PETRTM.getBP0InRun(0);
+        if ( _PETRTM.isFRTMNew() )
+            percentChange *= -1.;
         return percentChange;
     }
     else

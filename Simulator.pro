@@ -1,5 +1,5 @@
 QT += gui printsupport
-QMAKE_MAC_SDK = macosx10.13
+QMAKE_MAC_SDK = macosx10.15
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 #CONFIG += c++11 console

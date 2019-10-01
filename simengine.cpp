@@ -275,3 +275,26 @@ dVector simEngine::calculateConvolution(dVector tissue, bool downSample)
     } // jt
     return convolution;
 }
+double simEngine::getdk2a()
+{
+    // k2a = k2 / (1+_BP0)
+    // BP1 = BP0
+    double k2a_0 = _k2/(1.+_BP0);
+    double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
+    double k2a_1 = _k2/(1.+BP1);
+    double dk2a = k2a_1 - k2a_0;
+    return dk2a;
+}
+double simEngine::getdk2k3()
+{
+    double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
+    double DBP = _BP0 - BP1;
+    return - _k2 * DBP;  // don't use PET convention
+    /*
+    double k2k3_0 = _k2 * _BP0;
+    double k2k3_1 = _k2 * BP1;
+    double dk2k3 = k2k3_0 - k2k3_1;
+    qDebug() << "compute dk2k3 truth" << _BP0 << BP1 << _k2 << k2k3_0 << k2k3_1 << dk2k3;
+    return dk2k3/_k4;
+    */
+}
