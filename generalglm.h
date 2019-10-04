@@ -27,34 +27,6 @@ enum fMRIEventShapes // used both in fMRI and timePage classes
     Shape_FR,
     Shape_RSFIR
 };
-enum PETChallengeShapes // used both in PETRTM and timePage classes
-{
-    Challenge_none,
-    Challenge_Constant,
-    Challenge_Sigmoid,
-    Challenge_Gamma,
-    Challenge_Square,
-    Challenge_RampUp,
-    Challenge_RampDown,
-    Challenge_Table
-};
-enum PETEventTypes
-{
-    Type_R1,
-    Type_k2,
-    Type_k2a,
-    Type_dCrdt,
-    Type_challenge
-};
-enum PETWeightingModels
-{
-    Weights_Uniform,
-    Weights_11C_Noiseless,
-    Weights_11C,
-    Weights_Custom,
-    Weights_18F_Noiseless,
-    Weights_18F
-};
 class GeneralGLM
 {
 #define MaxConditions 100

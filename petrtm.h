@@ -15,6 +15,34 @@ enum RTMModelTypes
     RTM_rFRTM3New,// 3-parameter rFRTM: R1, k2, k2a (iterative) using fixed k4 to determine BPnd by formulation "k2a"=k2*k4*BPnd
     RTM_rFRTM2New// 2-parameter rFRTM:     k2, k2a (iterative) using fixed k4 to determine BPnd by formulation "k2a"=k2*k4*BPnd
 };
+enum PETWeightingModels
+{
+    Weights_Uniform,
+    Weights_11C_Noiseless,
+    Weights_11C,
+    Weights_noUptake,
+    Weights_18F_Noiseless,
+    Weights_18F
+};
+enum PETEventTypes
+{
+    Type_R1,
+    Type_k2,
+    Type_k2a,
+    Type_dCrdt,
+    Type_challenge
+};
+enum PETChallengeShapes // used both in PETRTM and timePage classes
+{
+    Challenge_none,
+    Challenge_Constant,
+    Challenge_Sigmoid,
+    Challenge_Gamma,
+    Challenge_Square,
+    Challenge_RampUp,
+    Challenge_RampDown,
+    Challenge_Table
+};
 
 class PETRTM : public GeneralGLM    // for multi-threading, use no pointers
 {
@@ -79,10 +107,12 @@ private:
     dMatrix _frtmConv_dCtdtERaw;      // [_nRuns][_nTimeInRun]; for use with modified basis functions
     dMatrix _frtmConv_dCtdtE;         // [_nRuns][_nTimeInRun];
     dMatrix _frtmConv_CtE;            // [_nRuns][_nTimeInRun];
-    dMatrix _frtmConvDeWeight;        // [_nRuns][_nTimeInRun]; for de-weighting the uptake period (1-mag(_frtmConv_dCtdtE)/max)
+    dMatrix _frtmConvDeWeightUptake;  // [_nRuns][_nTimeInRun]; for de-weighting the uptake period (1-mag(_frtmConv_dCtdtE)/max)
 
-    // iterative methods
-    dVector _BPndForIterations;          // [_nRuns]; use this for  1) SRTM2Fit (iterative BPnd), and 2) RTM_rFRTM2New with _fitk4UsingFixedBPnd
+    // iterative methods: save BPnd immediately after fitting so one can switch between models without affecting BPnd extraction
+    dVector _BPndForIterations;       // [_nRuns]; use this for 1) SRTM2Fit (iterative BPnd),
+                                      //                        2) 1st pass rFRTMNew (BPnd from SRTM)
+                                      //                        3) _fitk4UsingFixedBPnd
     int _nIterations=0;
     bool _fitk4UsingFixedBPnd=false;
 
@@ -116,18 +146,20 @@ private:
     void differentiateByRun(dMatrix &basisFunction );
     dVector makeVectorFromROIData(QVector<ROI_data> timeSeriesVector);
 
+    void fitDataByGLM(dMatrix timeSeriesVector);
+    void fitDataByGLM(QVector<ROI_data> timeSeriesVector);
     void fitDataByGLM(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
     void fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
     void fitDataByGLMPlusLineScan(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
     double lineScan1D( int iRun, dVector valueInRun, double &valueIncrement, dVector data );
+    double lineScanTau4(int iRun, double &valueIncrement, dVector data );
     double updateLineScanFit(dVector data);
-    void fitWLSDuringIteration(dVector &data, bool computeSigma2);
+    void fitWLSForIteration(dVector &data);
     void createAllBasisFunctions();
-    void createRunBasisFunction(bool newTAC, QChar eventID, dVector &basis);
-    void createChallengeBasisFunction(bool newTAC, int iCoeff, dVector &basis);
+    void createRunBasisFunction(QChar eventID, dVector &basis);
+    void createChallengeBasisFunction(int iCoeff, dVector &basis);
     void createChallengeShape(int iRun, int indexChallenge, dVector &shape);
 
-    void recreateAllBasisFunctions(bool newTAC);
 
     int readGLMFileOldFormat(int iRun, QString fileName);
     int readGLMFileNewFormat(int iRun, QString fileName);
@@ -142,7 +174,7 @@ public:
     QVector<QString> _frameFiles; // [_nRuns]
 
     void prepare();
-    void calculateFRTMConvolution(bool newTAC);
+    void calculateFRTMConvolution();
     dVector convolveEquilibration(int iRun, dVector tissue, dVector equilibration);
     void calculateBPndOrK4ForIteration();
 
@@ -177,6 +209,7 @@ public:
     inline void setNPreForAveraging(int nPre) {_nPreForChallAv = nPre;}
     inline void setNPostForAveraging(int nPost) {_nPostForChallAv = nPost;}
     inline void setGUIVisibility(bool state) {_visibleInGUI=state;}
+    inline void setWeightingModel(int whichWeightingModel) {_PETWeightingModel = whichWeightingModel; setPrepared(false);}
     inline void defineTimeModelFileConditions() {definePETConditions(_petConditionsFromTimeModelFile);}
     void setIgnoredPoints(int iRun, bool resetWeights, QString ignoreString);
     void setTimePointsInRun(int iRun, int nTime);
@@ -193,7 +226,6 @@ public:
     void setTissueVector(dMatrix tissueRegion);
     void setRTMModelType(RTMModelTypes model);
     void setRTMModelType(QString model);
-    void setWeightingModel(int whichWeightingModel);
     void setWeightsInRun(int iRun);
     void setSmoothingScale(double smoothingScale);
     inline void setTau4(int iRun, double tau4) {_tau4[iRun] = tau4; setPrepared(false);}
@@ -275,8 +307,7 @@ public:
     bool isGoodStimulusInRun( int indexChallenge, int indexStimulus, int iRun);
     int getChallengeInfoRequired(int iShape);
     inline int getPETWeightingModel() {return _PETWeightingModel;}
-    dVector getEquilibrationVectorFordCtdtE(int iFile);
-    dVector getEquilibrationVectorForCtE(int iFile, bool newTAC);
+    dVector getEquilibrationVector(int iFile);
     dVector getBPndVector(int iFile);
     dPoint2D getBPndVersusTime(int iFile, int iTime);
     dPoint2D getBPndInCurrentCondition();
