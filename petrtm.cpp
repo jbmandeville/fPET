@@ -2735,6 +2735,9 @@ void PETRTM::setWeightsInRun(int iRun)
 {
     qDebug() << "setWeightsInRun enter" << _PETWeightingModel << _nTimePerRun[iRun] << isFRTMFitk4();
     double trace=0.;
+    if ( _weights[iRun].size() != _nTimePerRun[iRun] )
+        _weights[iRun].resize(_nTimePerRun[iRun]);
+
     for (int jt=0; jt<_nTimePerRun[iRun]; jt++)
     {
         if ( isFRTMFitk4() )  // isFRTMNew && _fitk4UsingFixedBPnd
@@ -3127,7 +3130,7 @@ void PETRTM::calculateFRTMConvolution()
         fitLoessCurve(_frtmConv_dCtdtE);  // additional smoothing xxx
     qDebug() << "PETRTM::calculateFRTMConvolution exit";
 }
-
+/*
 dVector PETRTM::convolveEquilibration(int iRun, dVector tissue, dVector equilibration)
 {
     dVector convolution;  convolution.fill(0.,_nTimePerRun[iRun]);
@@ -3149,6 +3152,28 @@ dVector PETRTM::convolveEquilibration(int iRun, dVector tissue, dVector equilibr
         {
             double dt = _table[iRun][jtPrime][0]; // width of bin
             convolution[jt] += tissue[jtPrime] * exponential[jt-jtPrime] * dt;
+        }
+    } // jt
+    return convolution;
+}
+*/
+dVector PETRTM::convolveEquilibration(int iRun, dVector tissue, dVector equilibration)
+{
+    dVector convolution;  convolution.fill(0.,_nTimePerRun[iRun]);
+    for (int jt=0; jt<_nTimePerRun[iRun]; jt++)
+    {
+        dVector exponential;          exponential.resize(jt+1);
+        for ( int jtPrime=0; jtPrime<=jt; jtPrime++ )
+        {
+            exponential[jtPrime] = qExp(-equilibration[jtPrime] * (getTimeInRun(iRun,jt-jtPrime)));
+            double dt = _table[iRun][jtPrime][0]; // width of bin
+            // Discrete values of the integral do not represent the average value across the bin,
+            // so compute a correction factor to ensure that the exponential integral matches the continuous integral.
+            double correctionFactor = qExp(-equilibration[jtPrime]*dt/2.) / equilibration[jtPrime] / dt;
+            correctionFactor *= qExp(equilibration[jtPrime] * dt) - 1.;
+            qDebug() << "dt[" << jtPrime << "] =" << dt << correctionFactor;
+            exponential[jtPrime] *= correctionFactor;
+            convolution[jt] += tissue[jtPrime] * exponential[jtPrime] * dt;
         }
     } // jt
     return convolution;

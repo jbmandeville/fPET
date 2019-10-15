@@ -1067,10 +1067,21 @@ void SimWindow::updateTargetGraph()
     // add FRTM convolution
     if ( _PETRTM.isFRTM() )
     {
-        _targetPlot->addCurve(0,"convolution");
+        if ( _PETRTM.isFRTMNew() )
+            _targetPlot->addCurve(0,"BP0*convolution");
+        else
+            _targetPlot->addCurve(0,"convolution");
         _targetPlot->setColor(Qt::green);
         for (int jt=0; jt<nTime; jt++)
-            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
+            yTAC[jt]  = _simulator.getBP0() * _PETRTM.getFRTMConvolution(0,jt);
+        _targetPlot->setData(xTime,yTAC);
+    }
+    if ( _PETRTM.isFRTMNew() )
+    {
+        _targetPlot->addCurve(0,"Ct-Cr");
+        _targetPlot->setColor(Qt::cyan);
+        for (int jt=0; jt<nTime; jt++)
+            yTAC[jt]  = _PETRTM.getCtMinusCr(0,jt);
         _targetPlot->setData(xTime,yTAC);
     }
 

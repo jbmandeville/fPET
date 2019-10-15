@@ -333,8 +333,10 @@ public:
     inline bool currentconditionIsR1Type() {return getCurrentConditionShape() == Type_R1;}
     inline bool currentconditionIsdCrdtType() {return getCurrentConditionShape() == Type_dCrdt;}
     dPoint2D getValueAndErrorForCurrentCondition();
-    inline double getFRTMConvolution(int iFile, int iTime) {if ( isFRTMNew() ) return 5.*_frtmConv_CtE[iFile][iTime]; else return _frtmConv_dCtdtERaw[iFile][iTime];}
+    inline double getFRTMConvolution(int iFile, int iTime) {if ( isFRTMNew() ) return _frtmConv_CtE[iFile][iTime]; else return _frtmConv_dCtdtERaw[iFile][iTime];}
     inline double getFRTMConvolutionFit(int iFile, int iTime) {return _frtmConv_dCtdtE[iFile][iTime];}
+    inline double getCtMinusCr(int iFile, int iTime) {return _tissRegion[iFile][iTime] - _refRegion[iFile][iTime];}
+
     bool isValidID(int iRun, int iType, QChar eventID);
 };
 
