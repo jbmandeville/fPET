@@ -167,6 +167,9 @@ private:
 private slots:
     void changedNumberThreads(int indexInBox);
     void changedGraphSizes(int iSelection);
+    void showPlasmaRR();
+    void showPlasma();
+    void showRR();
 
     void changedTimeDuration();
     void changedTimeStep();

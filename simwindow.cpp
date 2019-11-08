@@ -89,7 +89,7 @@ void SimWindow::getTableDataFile()
     fileName = fileDialog.getOpenFileName(this,
                                           "Select an overlay file to open",
                                           QDir::currentPath(),
-                                          "Overlay list files (overlay-list.* *.dat *.list)");
+                                          "Overlay list files (*.dat *.roi *.list *.table)");
     if ( fileName.isEmpty() )
         return;
     else
@@ -133,7 +133,7 @@ void SimWindow::createSetupPage()
     _setupPlotLayout = new QVBoxLayout();
     _setupPlotLayout->addWidget(_plasmaPlot->getPlotSurface());
     _setupPlotLayout->addWidget(_RRPlot->getPlotSurface());
-    changedGraphSizes(0);
+    showPlasmaRR();
     QString numberString;
     int editTextSize=80;
 
@@ -300,18 +300,19 @@ void SimWindow::createSetupPage()
     graphButtons->addAction(dragYAction);
     graphButtons->addAction(rescaleXYAction);
 
-    auto *graphSizes = new QComboBox();
-    graphSizes->addItem("plasma/RR");
-    graphSizes->addItem("plasma");
-    graphSizes->addItem("RR");
-    graphSizes->setMaximumWidth(150);  // important when adding atlas regions, which have very long names
+    auto *radioShowPlasmaRR  = new QRadioButton("Plasma/RR",_setupPage);
+    auto *radioShowPlasma    = new QRadioButton("Plasma",_setupPage);
+    auto *radioShowRR        = new QRadioButton("RR",_setupPage);
+    radioShowPlasmaRR->setChecked(true);
 
     QToolBar *graphToolBar = new QToolBar("time tool bar");
 
     graphToolBar->addAction(dragXAction);
     graphToolBar->addAction(dragYAction);
     graphToolBar->addAction(rescaleXYAction);
-    graphToolBar->addWidget(graphSizes);
+    graphToolBar->addWidget(radioShowPlasmaRR);
+    graphToolBar->addWidget(radioShowPlasma);
+    graphToolBar->addWidget(radioShowRR);
     fullLayout->setMenuBar(graphToolBar);
 
     // Make toolbar connections
@@ -323,7 +324,11 @@ void SimWindow::createSetupPage()
     connect(dragYAction,     SIGNAL(triggered(bool)), _RRPlot, SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _RRPlot, SLOT(autoScale(bool)));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _RRPlot, SLOT(setSelectPoints()));
-    connect(graphSizes,      SIGNAL(currentIndexChanged(int)), this, SLOT(changedGraphSizes(int)));
+
+    connect(radioShowPlasmaRR, SIGNAL(clicked(bool)), this, SLOT(showPlasmaRR()));
+    connect(radioShowPlasma,   SIGNAL(clicked(bool)), this, SLOT(showPlasma()));
+    connect(radioShowRR,       SIGNAL(clicked(bool)), this, SLOT(showRR()));
+
 
     _setupPage->setLayout(fullLayout);
 }
@@ -919,6 +924,27 @@ void SimWindow::changedGraphSizes(int iSelection)
         _setupPlotLayout->setStretch(1,1);     // time plot
     }
 }
+void SimWindow::showPlasmaRR()
+{
+    _plasmaPlot->getPlotSurface()->setVisible(true);
+    _RRPlot->getPlotSurface()->setVisible(true);
+    _setupPlotLayout->setStretch(0,1);     // basis plot
+    _setupPlotLayout->setStretch(1,1);     // time plot
+}
+void SimWindow::showPlasma()
+{
+    _plasmaPlot->getPlotSurface()->setVisible(true);
+    _RRPlot->getPlotSurface()->setVisible(false);
+    _setupPlotLayout->setStretch(0,1);     // basis plot
+    _setupPlotLayout->setStretch(1,1);     // time plot
+}
+void SimWindow::showRR()
+{
+    _plasmaPlot->getPlotSurface()->setVisible(false);
+    _RRPlot->getPlotSurface()->setVisible(true);
+    _setupPlotLayout->setStretch(0,1);     // basis plot
+    _setupPlotLayout->setStretch(1,1);     // time plot
+}
 void SimWindow::updatePlasmaGraph()
 {
     qDebug() << "SimWindow::updatePlasmaGraph enter";
@@ -1071,7 +1097,7 @@ void SimWindow::updateTargetGraph()
             _targetPlot->addCurve(0,"BP0*convolution");
         else
             _targetPlot->addCurve(0,"convolution");
-        _targetPlot->setColor(Qt::green);
+        _targetPlot->setColor(Qt::magenta);
         for (int jt=0; jt<nTime; jt++)
             yTAC[jt]  = _simulator.getBP0() * _PETRTM.getFRTMConvolution(0,jt);
         _targetPlot->setData(xTime,yTAC);
