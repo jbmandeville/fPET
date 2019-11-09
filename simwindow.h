@@ -17,7 +17,7 @@ private:
     PETRTM _PETRTM;
     QStringList _dataColumnNames;
     dMatrix _dataTable;
-
+    bool _analyzeRealData = false;
 
     double _BPndLowValue  = 1.0;
     double _BPndHighValue = 5.0;
@@ -39,6 +39,8 @@ private:
     QComboBox *_threadsComboBox;
     QStatusBar *_statusBar;
     QProgressBar *_progressBar;
+    QStatusBar *_RRStatusBar;
+    QStatusBar *_TRStatusBar;
 
     // plots
     plotData *_plasmaPlot;   // setup page
@@ -152,6 +154,9 @@ private:
     void getTableDataFile();
     QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
     void enablePlasmaMatching(bool state);
+    void addSimulationCurveRR();
+    void addDataCurveRR();
+    void defineRTMModel();
 
     void analyzeSimulatedTAC();
     QString analyzeString(double truth, double guess);
@@ -163,6 +168,7 @@ private:
     double calculateMean(dVector vec);
     double calculateStDev(double mean, dVector vec);
     void enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool enable);
+    inline bool realDataAvailable() {return _dataTable.size() != 0;}
 
 private slots:
     void changedNumberThreads(int indexInBox);

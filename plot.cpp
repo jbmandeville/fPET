@@ -69,7 +69,7 @@ plotData::plotData(int plotID)
     _qcplot->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(_qcplot, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(contextMenuRequest(QPoint)));
 
-    if ( _plotID == 0 )
+    if ( _plotID == 1 || _plotID == 3 )
     { // for the time-series plot only
         QAction *plusAction = new QAction(this);
         plusAction->setShortcut(Qt::Key_Equal);
@@ -94,12 +94,12 @@ void plotData::keyboardMinus()
         int iDataCurve = getDataCurveIndex(iFile);   // data points should be 1st curve in ifile
         if ( iDataCurve < 0 )
         {
-            int iDataCurve = getDataCurveIndex(_nFiles-1);
+            int iDataCurve = getDataCurveIndex(_listOfCurves.size()-1);
             iTime = _listOfCurves[iDataCurve].yData.size() - 1; // last time point in last file
         }
     }
     setPositionTracer(iFile, iTime);
-    emit changedPointFromGraph(_iFilePosition,_iTimePosition);
+    emit changedPointFromGraph(_plotID, _iFilePosition,_iTimePosition);
 }
 
 void plotData::keyboardPlus()
@@ -116,7 +116,7 @@ void plotData::keyboardPlus()
             iFile = iTime = 0; // wrap-around to the 1st file and point
     }
     setPositionTracer(iFile, iTime);
-    emit changedPointFromGraph(_iFilePosition,_iTimePosition);
+    emit changedPointFromGraph(_plotID, _iFilePosition,_iTimePosition);
 }
 
 ///////////////////////////////////////////////////////////////////
@@ -150,8 +150,15 @@ void plotData::setSelectPoints()
 void plotData::lastTimePoint()
 {
     setPositionTracer(_iFilePositionLast, _iTimePositionLast);
-    emit changedPointFromGraph(_iFilePosition,_iTimePosition);
+    emit changedPointFromGraph(_plotID, _iFilePosition,_iTimePosition);
 }
+
+void plotData::changePoint(int plotID, int iFile, int iTime)
+{
+    if ( plotID != _plotID ) // prevent infinite loops (no signal to self)
+        setPositionTracer(iFile, iTime);
+}
+
 
 void plotData::setAxis2Range( QCPRange Range1 )
 {
@@ -308,80 +315,80 @@ void plotData::writeGraph(bool newGraph, QString fileName, QString regionName)
         out << "new #" + regionName + "\n";
     }
 
-    if ( !_concatenateRuns )
+    // Write the headers; assume all files have the same curves to be exported
+    // Find the number of curves per file to export
+    int iFile = _listOfCurves[0].iFile; // presumably = 0
+    int nCurvesPerFile=0;
+    for (int jCurve=0; jCurve<_listOfCurves.size(); jCurve++)
     {
-        // Write the headers
-        out << "index " << getLabelXAxis() << " ";
-        for (int jCurve=0; jCurve<_listOfCurves.size(); jCurve++)
+        plotCurve currentCurve = _listOfCurves[jCurve];
+//        qDebug() << "test curve" << jCurve << "has legend" << currentCurve.legend;
+        if ( currentCurve.iFile != iFile )
+            break;
+        else if ( currentCurve.exportCurve )
         {
-            plotCurve currentCurve = _listOfCurves[jCurve];
-            if ( currentCurve.exportCurve )
-                out << currentCurve.legend << " ";
-            if ( currentCurve.errorBars != 0 )
-                out << currentCurve.legend << "_err ";
-            if ( currentCurve.scaleFactor != 1. )
-                out << currentCurve.legend << "_scaled ";
+//            qDebug() << "new curve" << jCurve << "has legend" << currentCurve.legend;
+            nCurvesPerFile++;
         }
-        out << "\n";
-        // Write the data
-        for (int jt=0; jt<_listOfCurves[0].yData.size(); jt++)
+    }
+//    qDebug() << "nCurvesPerFile" << nCurvesPerFile;
+    // Write headers
+    out << "index time ";
+    for (int jCurve=0; jCurve<nCurvesPerFile; jCurve++)
+    {
+        plotCurve currentCurve = _listOfCurves[jCurve];
+        if ( currentCurve.exportCurve )
         {
-            out << jt << " " << _listOfCurves[0].xPlot[jt] << " ";
+//            qDebug() << currentCurve.legend << " ";
+            out << currentCurve.legend << " ";
+            if ( currentCurve.errorBars != 0 )
+            {
+                out << currentCurve.legend << "_err ";
+//                qDebug() << currentCurve.legend << "_err ";
+            }
+            if ( currentCurve.scaleFactor != 1. )
+            {
+                out << currentCurve.legend << "_scaled ";
+//                qDebug() << currentCurve.legend << "_scaled ";
+            }
+        }
+    }
+    out << "\n";
+//    qDebug() << "nFiles" << _nFiles;
+    for (int jFile=0; jFile<_nFiles; jFile++)
+    {
+        int iDataCurve = getDataCurveIndex(jFile);  // points to 1st curve for this file
+//        qDebug() << "iDataCurve" << iDataCurve;
+//        qDebug() << "size" << _listOfCurves[iDataCurve].yData.size();
+        // loop over time points and write all curves for this file in columns
+        for (int jt=0; jt<_listOfCurves[iDataCurve].yData.size(); jt++)
+        {
+            out << jt << " " << _listOfCurves[iDataCurve].xPlot[jt] << " ";
+//            qDebug() << jt << " " << _listOfCurves[iDataCurve].xPlot[jt] << " ";
             for (int jCurve=0; jCurve<_listOfCurves.size(); jCurve++)
             {
                 plotCurve currentCurve = _listOfCurves[jCurve];
-                if ( currentCurve.exportCurve )
+//                qDebug() << "curve" << jCurve << "has data index" << getDataCurveIndex(jCurve);
+                if ( _listOfCurves[jCurve].iFile == jFile && currentCurve.exportCurve ) // if correct file and export
                 {
+//                    qDebug() << "curve" << jCurve << "matches file" << jFile;
+//                    qDebug() << currentCurve.legend << "[" << jt << "] with size" << currentCurve.yData.size();
                     out << currentCurve.yData[jt] << " ";
+//                    qDebug() << currentCurve.yData[jt] << " ";
                     if ( currentCurve.errorBars != 0 )
-                        out << _listOfCurves[jt].yError[jt] << " ";
-                }
-            }
-            out << "\n";
-        }
-    }
-    else
-    {   // Concatenate runs
-        // Write the headers
-        out << "index time ";
-        for (int jCurve=0; jCurve<_nCurvesPerFile; jCurve++)
-        {
-            plotCurve currentCurve = _listOfCurves[jCurve];
-            if ( currentCurve.exportCurve )
-            {
-                out << currentCurve.legend << " ";
-                if ( currentCurve.errorBars != 0 )
-                    out << currentCurve.legend << "_err ";
-                if ( currentCurve.scaleFactor != 1. )
-                    out << currentCurve.legend << "_scaled ";
-            }
-        }
-        out << "\n";
-        // Write the data for each file in a concatenated series
-        int iTime=0;
-        for ( int jFile=0; jFile<_nFiles; jFile++ )
-        {
-            int iDataCurve = getDataCurveIndex(jFile);
-            plotCurve currentCurve = _listOfCurves[iDataCurve];
-            int nTime = currentCurve.yData.size();
-            for ( int jt=0; jt<nTime; jt++, iTime++ )
-            {
-                out << jt << " " << currentCurve.xPlot[jt] << " ";
-                for (int jCurve=0; jCurve<_nCurvesPerFile; jCurve++)
-                {
-                    int iDataCurve = getDataCurveIndex(jFile) + jCurve;
-                    plotCurve currentCurve = _listOfCurves[iDataCurve];
-                    if ( currentCurve.exportCurve )
                     {
-                        out << currentCurve.yData[jt] << " ";
-                        if ( currentCurve.errorBars != 0 )
-                            out << currentCurve.yError[jt] << " ";
+                        out << currentCurve.yError[jt] << " ";
+//                        qDebug() << currentCurve.yError[jt] << " ";
                     }
-                } // jCurve
-                out << "\n";
-            } // jt
-        } // jFile
-    }
+                } // write curve
+            } // jCurve
+            out << "\n";
+        } // jt
+        if ( jFile != _nFiles-1 )
+            out << "\nnew\n";  // on to the next file
+        else
+            out << "\n";  // on to the next file
+    } // jFile
 
     file.close();
 }
@@ -469,7 +476,7 @@ void plotData::plotMousePress(QMouseEvent *event)
             setPositionTracer(_iFilePosition,x);
             int iTimePoint = whichTracerTimePoint(_iFilePosition);
             setPositionTracer(_iFilePosition,iTimePoint);  // store last time point info
-            emit changedPointFromGraph(_iFilePosition,iTimePoint);
+            emit changedPointFromGraph(_plotID, _iFilePosition,iTimePoint);
         }
         else
         {
@@ -480,7 +487,7 @@ void plotData::plotMousePress(QMouseEvent *event)
             setPositionTracer(iFile,x);
             int iTimePoint = whichTracerTimePoint(iFile);
             setPositionTracer(iFile,iTimePoint);   // store last time point info
-            emit changedPointFromGraph(iFile,iTimePoint);
+            emit changedPointFromGraph(_plotID, iFile,iTimePoint);
         }
         _qcplot->replot();
     }
@@ -594,12 +601,12 @@ void plotData::interpretMousePosition(QMouseEvent *event)
         _cursorOnPlot = true;
 }
 
-double plotData::getMaxY(plotCurve *ptrCurve)
+double plotData::getMaxYAbs(plotCurve *ptrCurve)
 {
-    double dMax = -1.e10;
+    double dMax = 0.;
     for ( int jPoint=0; jPoint<ptrCurve->yData.size(); jPoint++ )
     {
-        if ( ptrCurve->yData[jPoint] > dMax ) dMax = ptrCurve->yData[jPoint];
+        if ( qAbs(ptrCurve->yData[jPoint]) > dMax ) dMax = qAbs(ptrCurve->yData[jPoint]);
     }
     return dMax;
 }
@@ -883,7 +890,7 @@ void plotData::reScaleAxes(QCPRange *xRange, QCPRange *yRange)
             int nPoints = _listOfCurves[jGraph].yData.size();
             for ( int jPoint=0; jPoint<nPoints; jPoint++ )
             {
-//                qDebug() << "Data::reScaleAxes 3" << _listOfCurves[jGraph].ignoreRescale[jPoint];
+//                qDebug() << "Data::reScaleAxes 3" << jPoint << _listOfCurves[jGraph].ignoreRescale[jPoint];
                 bool errorBars = _listOfCurves[jGraph].errorBars == 1; // for errorBars=2 (envelop, data are passed as two line curves)
                 if ( !_listOfCurves[jGraph].ignoreRescale[jPoint] )
                 {  // Ignore the y value of "ignored" points
@@ -896,7 +903,7 @@ void plotData::reScaleAxes(QCPRange *xRange, QCPRange *yRange)
                     }
                     else
                         yMin = yMax = _listOfCurves[jGraph].yData[jPoint];
-                    //                qDebug() << "graph" << jGraph << "point" << jPoint << "yMin, yMax" << yMin << yMax;
+//                    qDebug() << "graph" << jGraph << "point" << jPoint << "yMin, yMax" << yMin << yMax;
                     if ( yMin < yRange->lower ) yRange->lower = yMin;
                     if ( yMax > yRange->upper ) yRange->upper = yMax;
                 }
@@ -906,9 +913,9 @@ void plotData::reScaleAxes(QCPRange *xRange, QCPRange *yRange)
             }
         }
     }
-    // expland the x and y ranges by 10% total
     if ( xRange->lower ==  1.e10 ) xRange->lower = -10.;
     if ( xRange->upper == -1.e10 ) xRange->upper =  10.;
+    // expland the x and y ranges by 10% total
     double extra = (xRange->upper - xRange->lower) * 0.05;
     xRange->lower -= extra;
     xRange->upper += extra;

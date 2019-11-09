@@ -48,7 +48,7 @@ class plotData : public QMainWindow
 {
     Q_OBJECT
 signals:
-    void changedPointFromGraph(int iFile, int iTime);
+    void changedPointFromGraph(int plotID, int iFile, int iTime);
 
 private:
     QCustomPlot *_qcplot;              // the QCustomPlot plotting class object
@@ -126,7 +126,7 @@ public:
     inline void setScaleFactor(double scaleFactor) {_listOfCurves.last().scaleFactor=scaleFactor;}
     inline void setYAxisRatio(double ratio) {_yAxis2Ratio = ratio;}
 
-    inline void setQCStatusBar(QStatusBar *statusBar ) {_statusBar = statusBar;}
+    inline void setQCStatusBar(QStatusBar *statusBar) {_statusBar = statusBar;}
     inline void setAutoScale( bool value ) {_autoScale = value;}
     inline void setSingleROIMode( bool mode ) {_singleROIMode = mode;}
     inline void setVisibleXAxis(bool visible) {_qcplot->xAxis->setVisible(visible);}
@@ -143,12 +143,14 @@ public:
     inline double getTracerTimeIndex() {return _iTimePosition;}
     inline double getTracerXPosition() {return _positionTracer->graphKey();}
     inline QString getLabelXAxis() {return _qcplot->xAxis->label();}
-    double getMaxY(plotCurve *ptrCurve);
+    double getMaxYAbs(plotCurve *ptrCurve);
     inline void setXRange(QCPRange range) {_qcplot->xAxis->setRange(range); _qcplot->replot();}
     inline void setYRange(QCPRange range) {_qcplot->yAxis->setRange(range); _qcplot->replot();}
     inline bool isAutoScale() {return _autoScale;}
     inline plotCurve *getThisCurvePointer() {return &_listOfCurves.last();}
     inline int getNumberCurves() {return _listOfCurves.size();}
+    inline dVector getXData(int iCurve) {return _listOfCurves[iCurve].xData;}
+    inline dVector getYData(int iCurve) {return _listOfCurves[iCurve].yData;}
 
 private slots:
     void axisLabelDoubleClick(QCPAxis *axis, QCPAxis::SelectablePart part);
@@ -177,6 +179,8 @@ public slots:
     void setYZoom();
     void autoScale(bool state);
     void setSelectPoints();
+    void changePoint(int plotID, int iFile, int iTime);
+
 };
 
 #endif // plotData_H

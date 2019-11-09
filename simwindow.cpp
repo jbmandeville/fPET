@@ -130,9 +130,17 @@ void SimWindow::createSetupPage()
 
     _plasmaPlot = new plotData(0);
     _RRPlot     = new plotData(1);
+
+    //////// The setup page status bar
+    _RRStatusBar = new QStatusBar;  // must be global so it doesn't go out of scope
+    _RRStatusBar->setStyleSheet("color:blue");
+    _RRPlot->setQCStatusBar(_RRStatusBar);
+//    _RRPlot->setMainPage(this);
+
     _setupPlotLayout = new QVBoxLayout();
     _setupPlotLayout->addWidget(_plasmaPlot->getPlotSurface());
     _setupPlotLayout->addWidget(_RRPlot->getPlotSurface());
+    _setupPlotLayout->addWidget(_RRStatusBar);
     showPlasmaRR();
     QString numberString;
     int editTextSize=80;
@@ -329,7 +337,6 @@ void SimWindow::createSetupPage()
     connect(radioShowPlasma,   SIGNAL(clicked(bool)), this, SLOT(showPlasma()));
     connect(radioShowRR,       SIGNAL(clicked(bool)), this, SLOT(showRR()));
 
-
     _setupPage->setLayout(fullLayout);
 }
 
@@ -416,9 +423,26 @@ void SimWindow::createTargetPage()
 
     _basisPlot  = new plotData(2);
     _targetPlot = new plotData(3);
+
+    //////// The setup page status bar
+    _TRStatusBar = new QStatusBar;  // must be global so it doesn't go out of scope
+    _TRStatusBar->setStyleSheet("color:blue");
+    _targetPlot->setQCStatusBar(_TRStatusBar);
+//    _targetPlot->setMainPage(this);
+
+    connect(_targetPlot, SIGNAL(changedPointFromGraph(int,int,int)), _basisPlot,   SLOT(changePoint(int,int,int)));
+    connect(_targetPlot, SIGNAL(changedPointFromGraph(int,int,int)), _RRPlot,      SLOT(changePoint(int,int,int)));
+    connect(_basisPlot,  SIGNAL(changedPointFromGraph(int,int,int)), _targetPlot,  SLOT(changePoint(int,int,int)));
+    connect(_basisPlot,  SIGNAL(changedPointFromGraph(int,int,int)), _RRPlot,      SLOT(changePoint(int,int,int)));
+    connect(_RRPlot,     SIGNAL(changedPointFromGraph(int,int,int)), _basisPlot,   SLOT(changePoint(int,int,int)));
+    connect(_RRPlot,     SIGNAL(changedPointFromGraph(int,int,int)), _targetPlot,  SLOT(changePoint(int,int,int)));
+
     auto *plotLayout = new QVBoxLayout();
     plotLayout->addWidget(_basisPlot->getPlotSurface());
     plotLayout->addWidget(_targetPlot->getPlotSurface());
+    plotLayout->addWidget(_TRStatusBar);
+    plotLayout->setStretch(0,1);     // basis plot
+    plotLayout->setStretch(1,1);     // target plot
     QString numberString;
     int editTextSize=80;
 
@@ -988,6 +1012,18 @@ void SimWindow::updateReferenceGraph()
     // update the plot: RR
     _RRPlot->init();
     _RRPlot->setLegendOn(true);
+
+    addSimulationCurveRR();
+    addDataCurveRR();
+
+    _RRPlot->conclude(0,true);
+    _RRPlot->plotDataAndFit(true);
+
+    qDebug() << "SimWindow::updateReferenceGraph exit";
+}
+
+void SimWindow::addSimulationCurveRR()
+{
     _RRPlot->addCurve(0,"RR");
     _RRPlot->setColor(Qt::red);
     _RRPlot->setPointSize(5);
@@ -1006,29 +1042,10 @@ void SimWindow::updateReferenceGraph()
         timeBins[0][jt] = stepSize * lDownSample;
     }
     _RRPlot->setData(xTime,yTAC);
-    static int firstTime=true;
-    if ( firstTime || nTime != _PETRTM.getNumberTimePoints() )
-    {
-        // Start with SRTM and no challenge
-        _PETRTM.setReferenceRegion(timeBins,refRegion);
-        // Assign these IDs:
-        _PETRTM.setR1EventID(0,'R');
-        _PETRTM.setk2EventID(0,'k');
-        _PETRTM.setk2aEventID(0,'a');
-        int indexChallenge = _PETRTM.getEventIndex('c');
-        _PETRTM.setChallengeShape(indexChallenge,Challenge_Sigmoid);
-        _PETRTM.setChallengeTau(indexChallenge,0.1);
-        if ( firstTime )
-        {
-            _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
-            _PETRTM.setTau2RefSRTM(0,_simulator.getTau2Ref());
-            _PETRTM.setTau2RefFRTM(0,_simulator.getTau2Ref());
-            _PETRTM.setTau4(0,_simulator.getTau4());
-        }
-        firstTime = false;
-    }
-    _PETRTM.setReferenceRegion(refRegion);
 
+}
+void SimWindow::addDataCurveRR()
+{
     if ( _dataRefRegion->count() != 0 )
     {
         int indexInBox = _dataRefRegion->currentIndex();
@@ -1038,11 +1055,36 @@ void SimWindow::updateReferenceGraph()
         _RRPlot->addCurve(0,"real data");
         _RRPlot->setData(_dataTable[0],_dataTable[indexData]);
     }
-
-    _RRPlot->conclude(0,true);
-    _RRPlot->plotDataAndFit(true);
-    qDebug() << "SimWindow::updateReferenceGraph exit";
 }
+/*
+dMatrix SimWindow::convertTimePointsToTimeFrames(dMatrix timePoints)
+{ // timePoints should represent centers of bins
+    dMatrix bins;  bins.resize(timePoints.size());
+    for ( int jRun=0; jRun<timePoints.size(); jRun++)
+    {
+        int nTime = timePoints[jRun].size();
+        bins[jRun].resize(nTime);
+        for (int j=0; j<nTime; j++)
+        {
+            double low, high;
+            if ( j == 0 )
+                low = 0.;
+            else
+                low = (timePoints[jRun][j-1] + timePoints[jRun][j]) / 2.;  // average of bins
+            if ( j == nTime-1 )
+            { // duration of scan is unknown, so find the lower edge to define the bin width
+                double lowerEdge = timePoints[jRun][j-1] + bins[jRun][j-1];
+                double halfWidth = timePoints[jRun][j-1] - lowerEdge;
+                high = timePoints[jRun][j] + halfWidth;
+            }
+            else
+                high = timePoints[jRun][j] + timePoints[jRun][j+1] / 2.;  // average of bins
+            bins[jRun][j] = high - low;
+        }
+    }
+}
+*/
+
 void SimWindow::updateTargetGraph()
 {
     qDebug() << "SimWindow::updateTargetGraph enter";
@@ -1068,12 +1110,20 @@ void SimWindow::updateTargetGraph()
     }
     _targetPlot->setData(xTime,yTAC);
 
+    qDebug() << "SimWindow::updateTargetGraph 1";
+    defineRTMModel();
     // update the RTM model
+    qDebug() << "SimWindow::updateTargetGraph 2";
     _PETRTM.setTissueVector(tissueVector);
+    qDebug() << "SimWindow::updateTargetGraph 3";
     _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
 //    _PETRTM.setIgnoredPoints(0,true,"20-n");  // xxx jbm
+    qDebug() << "SimWindow::updateTargetGraph 4";
     _PETRTM.prepare();
+    qDebug() << "SimWindow::updateTargetGraph 5";
     _PETRTM.fitData(tissueVector,fitVector);
+    qDebug() << "SimWindow::updateTargetGraph 6";
+
     analyzeSimulatedTAC();
 
     // add fit
@@ -1115,6 +1165,66 @@ void SimWindow::updateTargetGraph()
     _targetPlot->plotDataAndFit(true);
     qDebug() << "SimWindow::updateTargetGraph exit";
 }
+
+void SimWindow::defineRTMModel()
+{
+    qDebug() << "SimWindow::defineRTMModel enter";
+    static int firstTime=true;
+    if ( _analyzeRealData )
+    {
+        // matrices: [nRuns][nTime]
+        dMatrix timeBins;  timeBins.resize(1);
+        dMatrix refRegion; refRegion.resize(1);
+        timeBins[0]  = _dataTable[0];         // _dataTable[nColums]
+        refRegion[0] = _RRPlot->getYData(0);  // getYData(iCurve)
+        _PETRTM.setReferenceRegion(timeBins,refRegion);
+    }
+    else
+    {
+        qDebug() << "SimWindow::defineRTMModel 1";
+        double duration = _simulator.getDuration();
+        double stepSize = _simulator.getStepSize();
+        int lDownSample = _simulator.getDownSampling();
+        int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+        if ( firstTime || nTime != _PETRTM.getNumberTimePoints() )
+        {
+            qDebug() << "SimWindow::defineRTMModel 2";
+            dMatrix timeBins;   timeBins.resize(1);   timeBins[0].resize(nTime);
+            for (int jt=0; jt<nTime; jt++)
+                timeBins[0][jt] = stepSize * lDownSample;
+            dMatrix refRegion; refRegion.resize(1);
+            refRegion[0].resize(nTime);
+            for (int jt=0; jt<nTime; jt++)
+                refRegion[0][jt] = _simulator.getCrDown(jt);
+            _PETRTM.setReferenceRegion(timeBins,refRegion);
+        }
+        qDebug() << "SimWindow::defineRTMModel 3";
+
+        // Assign these IDs:
+        _PETRTM.setR1EventID(0,'R');
+        _PETRTM.setk2EventID(0,'k');
+        _PETRTM.setk2aEventID(0,'a');
+        int indexChallenge = _PETRTM.getEventIndex('c');
+        _PETRTM.setChallengeShape(indexChallenge,Challenge_Sigmoid);
+        _PETRTM.setChallengeTau(indexChallenge,0.1);
+        qDebug() << "SimWindow::defineRTMModel 4";
+        if ( firstTime )
+        {
+            qDebug() << "SimWindow::defineRTMModel 5" << indexChallenge;
+            _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
+            qDebug() << "SimWindow::defineRTMModel 5.1";
+            _PETRTM.setTau2RefSRTM(0,_simulator.getTau2Ref());
+            qDebug() << "SimWindow::defineRTMModel 5.2";
+            _PETRTM.setTau2RefFRTM(0,_simulator.getTau2Ref());
+            qDebug() << "SimWindow::defineRTMModel 5.3";
+            _PETRTM.setTau4(0,_simulator.getTau4());
+        }
+        qDebug() << "SimWindow::defineRTMModel 6";
+        firstTime = false;
+    }
+    qDebug() << "SimWindow::defineRTMModel exit";
+}
+
 void SimWindow::updateBasisGraph()
 {
     _basisPlot->init();
@@ -1174,8 +1284,8 @@ void SimWindow::updateBasisGraph()
             double yFraction = 0.67;
             plotCurve *targetCurve = _basisPlot->getThisCurvePointer();  // this
             plotCurve sourceCurve  = _basisPlot->_listOfCurves[0];       // weights
-            double sourceMax = _basisPlot->getMaxY(&sourceCurve) / yFraction;
-            double targetMax = _basisPlot->getMaxY(targetCurve);
+            double sourceMax = _basisPlot->getMaxYAbs(&sourceCurve) / yFraction;
+            double targetMax = _basisPlot->getMaxYAbs(targetCurve);
             if ( targetMax != 0. && sourceMax != 0. )
             {
                 _basisPlot->_yAxis2Ratio = sourceMax / targetMax;
