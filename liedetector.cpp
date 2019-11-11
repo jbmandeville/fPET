@@ -12,10 +12,7 @@ lieDetector::lieDetector(const int numberSamples, const dVector BP0Values, const
 void lieDetector::run()
 {
     qDebug() << "lieDetector::run enter";
-    double duration = _simulator.getDuration();
-    double stepSize = _simulator.getStepSize();
-    int lDownSample = _simulator.getDownSampling();
-    int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+    int nTime = _simulator.getNumberBins();
     dMatrix refRegion;      refRegion.resize(1);    refRegion[0].resize(nTime);
     dMatrix tissueVector;   tissueVector.resize(1); tissueVector[0].resize(nTime);
 

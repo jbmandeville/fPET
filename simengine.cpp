@@ -7,7 +7,36 @@
 
 simEngine::simEngine()
 {
+    // initialize
+    initializeBins();
+    updateFineSamples();
+    // run
     run();
+}
+void simEngine::initializeBins()
+{
+    _durationBin.fill(6.,_nBins);
+    _numberSamplesPerBin.fill(10,_nBins);
+}
+void simEngine::updateFineSamples()
+{
+    _dtFine.clear();  _timeFine.clear(); _timeCoarse.clear();
+    double time=0.;
+    for (int jBin=0; jBin<_nBins; jBin++)
+    {
+        double dtFine = _durationBin[jBin] / _numberSamplesPerBin[jBin];
+        double avTime=0.;
+        for (int jSample=0; jSample<_numberSamplesPerBin[jBin]; jSample++)
+        {
+            _dtFine.append(dtFine);
+            time += dtFine;
+            _timeFine.append(time);
+            avTime += time;
+        }
+        avTime /= static_cast<double>(_numberSamplesPerBin[jBin]);
+        _timeCoarse.append(avTime);
+    }
+
 }
 
 void simEngine::run()
@@ -29,7 +58,7 @@ void simEngine::generatePlasmaTAC()
     // For simplicity, treat the plasma as two separate compartments: fast and slow
     // dC_p/dt = I(t)-K_fast*C_p-_slow*C_p*+Ks_in*C_s*(V_p/V_s)
 
-    int nTime = static_cast<int>(_duration / _dt);
+    int nTime = _dtFine.size();
     double Cp_fast = 0.;  double Cp_slow = 0.;
     _Cp.clear();
     double magInfusion = 0.;
@@ -37,14 +66,14 @@ void simEngine::generatePlasmaTAC()
         magInfusion = _magBolus * exp(1) * _tauBolus / _KBol;
     for ( int jt=0; jt<nTime; jt++)
     {
-        double time = jt * _dt;
+        double time = jt * _dtFine[jt];
         double plasmaInput = magInfusion + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
         if ( jt != 0. )
         {
             double dCpdt_fast  = _fracFast      * plasmaInput - _kFast * Cp_fast;
             double dCpdt_slow  = (1.-_fracFast) * plasmaInput - _kSlow * Cp_slow;
-            Cp_fast += dCpdt_fast * _dt;
-            Cp_slow += dCpdt_slow * _dt;
+            Cp_fast += dCpdt_fast * _dtFine[jt];
+            Cp_slow += dCpdt_slow * _dtFine[jt];
         }
         _Cp.append(Cp_fast + Cp_slow);
     }
@@ -54,7 +83,7 @@ void simEngine::generatePlasmaTAC()
 void simEngine::generateReferenceTAC()
 {
     // dCr_dt = K1 * Cp - k2 * Cr;
-    int nTime = _Cp.size();
+    int nTime = _dtFine.size();
     double Cr = 0.;
     _Cr.clear();
     for ( int jt=0; jt<nTime; jt++)
@@ -63,7 +92,7 @@ void simEngine::generateReferenceTAC()
         if ( jt != 0. )
         {
             double dCrdt = _K1Ref * Cp - _k2Ref * Cr;
-            Cr += dCrdt * _dt;
+            Cr += dCrdt * _dtFine[jt];
         }
         // Cp is conc(tracer)/volume(blood), whereas Cr is conc(tracer)/volume(tissue), so multiple Cp by volume(blood)/volume(tissue)
         _Cr.append(Cr + _percentPlasmaRef/100. * Cp);
@@ -84,11 +113,11 @@ void simEngine::generateTargetSRTM()
     double k2a = _k2 / (1. + _BP0);
 
     double Ct=0.;
-    int nTime = _Cp.size();
+    int nTime = _dtFine.size();
     _Ct.clear();
     for ( int jt=0; jt<nTime; jt++)
     {
-        int iDisplacementTime = static_cast<int>(_challengeTime / _dt);
+        int iDisplacementTime = static_cast<int>(_challengeTime / _dtFine[jt]);
         bool postChallenge = (jt > iDisplacementTime);
         if ( postChallenge && _deltaBPPercent != 0. )
         {
@@ -98,7 +127,7 @@ void simEngine::generateTargetSRTM()
         if ( jt > 0 )
         {
             double dCtdt = _K1 * _Cp[jt] - k2a * Ct ;
-            Ct += dCtdt * _dt;
+            Ct += dCtdt * _dtFine[jt];
         }
         _Ct.append(Ct + _percentPlasmaTar/100. * _Cp[jt]);
     }
@@ -120,11 +149,11 @@ void simEngine::generateTargetFRTM()
 
     double k3=_k3;
     double Cf=0.;  double Cb=0.;
-    int nTime = _Cp.size();
+    int nTime = _dtFine.size();
     _Cf.clear();  _Cb.clear();  _Ct.clear();
     for ( int jt=0; jt<nTime; jt++)
     {
-        int iDisplacementTime = static_cast<int>(_challengeTime / _dt);
+        int iDisplacementTime = static_cast<int>(_challengeTime / _dtFine[jt]);
         bool postChallenge = (jt > iDisplacementTime);
         if ( postChallenge && _deltaBPPercent != 0. )
         {
@@ -135,8 +164,8 @@ void simEngine::generateTargetFRTM()
         {
             double dCfdt = _K1 * _Cp[jt] + _k4 * Cb - (_k2 + k3) * Cf;
             double dCbdt = k3 * Cf - _k4 * Cb;
-            Cf += dCfdt * _dt;
-            Cb += dCbdt * _dt;
+            Cf += dCfdt * _dtFine[jt];
+            Cb += dCbdt * _dtFine[jt];
         }
         _Cf.append(Cf);
         _Cb.append(Cb);
@@ -150,20 +179,16 @@ void simEngine::generateTargetFRTM()
 
 dVector simEngine::downSample(dVector original)
 {
+    if ( original.size() != _dtFine.size() )
+        qFatal("Error: the fine-scale TAC does not match the fine-scale bin length in downSample().");
     dVector binned;
-    // Downsample the TAC
-    int nTime = original.size();
-    for ( int jt=0; jt<nTime; jt+=_lDownSample)
+    int iTFine = 0;
+    for (int jBin=0; jBin<_nBins; jBin++)
     {
-        double firstPoint = original[jt];
-        /*
-        double average = 0.;
-        for (int jDown=0; jDown<_lDownSample; jDown++)
-            average += original[jt+jDown];
-        average /= static_cast<double>(_lDownSample);
-        binned.append(average);
-        */
-        binned.append(firstPoint);
+        double binValue = 0.;
+        for (int jt=0; jt<_numberSamplesPerBin[jBin]; jt++, iTFine++)
+            binValue += original[iTFine];
+        binned.append(binValue/ static_cast<double>(_numberSamplesPerBin[jBin]));
     }
     return binned;
 }
@@ -173,7 +198,7 @@ void simEngine::addNoise(double noiseScale, dVector &timeVector)
     for ( int jt=0; jt<nTime; jt++)
     {
         // noise proportional to Cr * exp(t/T_1/2)
-        double time = jt * _lDownSample * _dt;
+        double time = _timeCoarse[jt];
         double noiseMag = qSqrt(noiseScale * timeVector[jt] * exp(time/28.9));
         double noise = GaussianRandomizer(noiseMag, 2.*noiseMag);
         timeVector[jt] += noise;
@@ -202,12 +227,11 @@ double simEngine::GaussianRandomizer(double sigma, double cutoff)
 dVector simEngine::FRTMNewAnalyticalSolution()
 {
     int nTime = _CpBinned.size();
-    dVector convolution = calculateConvolution(_CtBinned,true);
+    dVector convolution = calculateConvolution(_CtBinned);
 
     dVector Ct; Ct.resize(nTime);
     for (int jt=0; jt<nTime; jt++)
-        Ct[jt] = _R1 * _CrBinned[jt] - _k2 * (integralOf(_CtBinned,jt,true) - integralOf(_CrBinned,jt,true))
-                + _k2*_k3 * integralOf(convolution,jt,true);
+        Ct[jt] = _R1 * _CrBinned[jt] - _k2 * (integralOf(_CtBinned,jt) - integralOf(_CrBinned,jt)) + _k2*_k3 * integralOf(convolution,jt);
     return Ct;
 }
 
@@ -217,7 +241,7 @@ dVector simEngine::FRTMOldAnalyticalSolution()
 
     // Calculate the derivative of the tissue vector
     dVector tissDerivative = differentiateTissueVector();
-    dVector convolution = calculateConvolution(tissDerivative,true);
+    dVector convolution = calculateConvolution(tissDerivative);
     double k2a = _k2 / (1. + _k3/_k4);
 
     dVector CrTerm; CrTerm.resize(nTime);
@@ -230,27 +254,25 @@ dVector simEngine::FRTMOldAnalyticalSolution()
 
     dVector Ct; Ct.resize(nTime);
     for (int jt=0; jt<nTime; jt++)
-        Ct[jt] = _R1 * _CrBinned[jt] + _k2 * integralOf(CrTerm,jt,true) - k2a * integralOf(CtTerm,jt,true);
+        Ct[jt] = _R1 * _CrBinned[jt] + _k2 * integralOf(CrTerm,jt) - k2a * integralOf(CtTerm,jt);
     return Ct;
 }
 
-double simEngine::integralOf(dVector tissue, int iTime, bool downSample)
+double simEngine::integralOf(dVector tissue, int iTime)
 {
     double integral=0;
-    double dt = _dt;
-    if ( downSample ) dt *= static_cast<double>(_lDownSample);
     for ( int jt=0; jt<=iTime; jt++)
-        integral += tissue[jt] * dt;
+        integral += tissue[jt] * _durationBin[jt];
     return integral;
 }
 
 dVector simEngine::differentiateTissueVector()
 {
     int nTime = _CtBinned.size();
-    double dt = _dt * _lDownSample;
     dVector derivative;  derivative.resize(nTime);
     for (int jt=0; jt<nTime; jt++)
     {
+        double dt = _durationBin[jt];
         if ( jt != 0. )
             derivative[jt] = (_CtBinned[jt] - _CtBinned[jt-1]) / dt;
         else
@@ -258,14 +280,13 @@ dVector simEngine::differentiateTissueVector()
     }
     return derivative;
 }
-dVector simEngine::calculateConvolution(dVector tissue, bool downSample)
+dVector simEngine::calculateConvolution(dVector tissue)
 {
     int nTime = tissue.size();
-    double dt = _dt;
-    if ( downSample ) dt *= static_cast<double>(_lDownSample);
     dVector convolution;  convolution.fill(0.,nTime);
     for (int jt=0; jt<nTime; jt++)
     {
+        double dt = _durationBin[jt];
         double time = dt * jt;  // probably need to shift by 1/2 bin
         for ( int jtPrime=0; jtPrime<=jt; jtPrime++ )
         { // integrate from 0 to current time in run (=iTime_run & time)
@@ -274,6 +295,13 @@ dVector simEngine::calculateConvolution(dVector tissue, bool downSample)
         } // jtPrime
     } // jt
     return convolution;
+}
+double simEngine::getDuration()
+{
+    double duration=0.;
+    for (int jt=0; jt<_dtFine.size(); jt++)
+        duration += _dtFine[jt];
+    return duration;
 }
 double simEngine::getdk2a()
 {

@@ -109,6 +109,8 @@ void SimWindow::getTableDataFile()
                 _dataRefRegion->addItem(_dataColumnNames.at(jColumn));
             _dataRefRegion->setCurrentIndex(_dataRefRegion->count()-1);
             enablePlasmaMatching(true);
+            _ROIFileName->setToolTip(fileName);
+            _ROIFileName->setText(utilString::getFileNameWithoutDirectory(fileName));
         }
     }
 }
@@ -141,36 +143,46 @@ void SimWindow::createSetupPage()
     _setupPlotLayout->addWidget(_plasmaPlot->getPlotSurface());
     _setupPlotLayout->addWidget(_RRPlot->getPlotSurface());
     _setupPlotLayout->addWidget(_RRStatusBar);
+    _setupPlotLayout->setStretch(0,1);     // basis plot
+    _setupPlotLayout->setStretch(1,1);     // time plot
     showPlasmaRR();
     QString numberString;
     int editTextSize=80;
 
     // setup (duration, step, down-sampling
+    _binIndex = new QSpinBox();
+
+
     auto *setupGroupBox = new QGroupBox("Setup the simulation");
-    QLabel *timeDurationLabel = new QLabel("Duration  (min)");
-    QLabel *timeStepLabel     = new QLabel("Time step (min)");
-    QLabel *downSampleLabel   = new QLabel("Downsampling (int)");
-    _timeDuration = new QLineEdit();
-    _timeStep     = new QLineEdit();
-    _downSample   = new QLineEdit();
-    _timeDuration->setText(numberString.setNum(_simulator.getDuration()));
-    _timeStep->setText(numberString.setNum(_simulator.getStepSize()));
-    _downSample->setText(numberString.setNum(_simulator.getDownSampling()));
-    _timeDuration->setFixedWidth(editTextSize);
-    _timeStep->setFixedWidth(editTextSize);
-    _downSample->setFixedWidth(editTextSize);
+    QLabel *numberTimeBinsLabel = new QLabel("# time bins");
+    QLabel *binIndexLabel = new QLabel("bin index");
+    QLabel *binDurationLabel = new QLabel("Bin duration (sec)");
+    QLabel *subSampleLabel   = new QLabel("Downsampling (int)");
+    _numberTimeBins = new QLineEdit();
+    _binDuration  = new QLineEdit();
+    _subSample    = new QLineEdit();
+    _binDuration->setFixedWidth(editTextSize);
+    _subSample->setFixedWidth(editTextSize);
+    QString text;
+    _numberTimeBins->setText(text.setNum(_simulator.getNumberBins()));
+    _binDuration->setText(text.setNum(_simulator.getDurationPerBin(0)));
+    _subSample->setText(numberString.setNum(_simulator.getSamplesPerBin(0)));
+
     auto *setupLayout = new QGridLayout();
-    setupLayout->addWidget(timeDurationLabel,0,0);
-    setupLayout->addWidget(_timeDuration,0,1);
-    setupLayout->addWidget(timeStepLabel,1,0);
-    setupLayout->addWidget(_timeStep,1,1);
-    setupLayout->addWidget(downSampleLabel,2,0);
-    setupLayout->addWidget(_downSample,2,1);
+    setupLayout->addWidget(numberTimeBinsLabel,0,0);
+    setupLayout->addWidget(_numberTimeBins,0,1);
+    setupLayout->addWidget(binIndexLabel,1,0);
+    setupLayout->addWidget(_binIndex,1,1);
+    setupLayout->addWidget(binDurationLabel,2,0);
+    setupLayout->addWidget(_binDuration,2,1);
+    setupLayout->addWidget(subSampleLabel,3,0);
+    setupLayout->addWidget(_subSample,3,1);
     setupGroupBox->setLayout(setupLayout);
     setupLayout->setSpacing(0);
-    connect(_timeDuration, SIGNAL(editingFinished()), this, SLOT(changedTimeDuration()));
-    connect(_timeStep,     SIGNAL(editingFinished()), this, SLOT(changedTimeStep()));
-    connect(_downSample,   SIGNAL(editingFinished()), this, SLOT(changedDownSample()));
+    connect(_numberTimeBins, SIGNAL(editingFinished()), this, SLOT(changedNumberBins()));
+    connect(_binIndex, SIGNAL(valueChanged(int)), this, SLOT(changedBinIndex(int)));
+    connect(_binDuration, SIGNAL(editingFinished()), this, SLOT(changedBinDuration()));
+    connect(_subSample,   SIGNAL(editingFinished()), this, SLOT(changedSubSample()));
 
     // Plasma Input
     auto *plasmaInGroupBox     = new QGroupBox("plasma: adjust TAC to match ref. region");
@@ -248,7 +260,6 @@ void SimWindow::createSetupPage()
     QLabel *tau1RefLabel    = new QLabel("1/K1' (ml/cm^3/min)^-1");
     QLabel *plasmaFracLabel = new QLabel("Plasma %");
     QLabel *noiseLabel      = new QLabel("Noise");
-    QLabel *dataLabel       = new QLabel("Data reference");
     _tau2Ref = new QLineEdit();
     _tau1Ref = new QLineEdit();
     _plasmaFracRef = new QLineEdit();
@@ -261,7 +272,6 @@ void SimWindow::createSetupPage()
     _tau1Ref->setFixedWidth(editTextSize);
     _plasmaFracRef->setFixedWidth(editTextSize);
     _noiseRef->setFixedWidth(editTextSize);
-    _dataRefRegion = new QComboBox();
     auto *RRLayout = new QGridLayout();
     RRLayout->addWidget(tau2RefLabel,0,0);
     RRLayout->addWidget(_tau2Ref,0,1);
@@ -271,20 +281,28 @@ void SimWindow::createSetupPage()
     RRLayout->addWidget(_plasmaFracRef,2,1);
     RRLayout->addWidget(noiseLabel,3,0);
     RRLayout->addWidget(_noiseRef,3,1);
-    RRLayout->addWidget(dataLabel,4,0);
-    RRLayout->addWidget(_dataRefRegion,4,1);
     RRGroupBox->setLayout(RRLayout);
     RRLayout->setSpacing(0);
-    connect(_tau2Ref,  SIGNAL(editingFinished()), this, SLOT(changedTau2Ref()));
-    connect(_tau1Ref,  SIGNAL(editingFinished()), this, SLOT(changedTau1Ref()));
-    connect(_plasmaFracRef, SIGNAL(editingFinished()), this, SLOT(changedPlasmaFracRef()));
-    connect(_noiseRef, SIGNAL(editingFinished()), this, SLOT(changedNoiseRef()));
-    connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataRefRegion(int)));
+
+    QPixmap pixmapOpenAlignment(":/My-Icons/openFile.png");
+    QIcon openIcon(pixmapOpenAlignment);
+    _readROIFile = new QPushButton(openIcon,"open",_setupPage);
+    _ROIFileName = new QLabel("No real data",_setupPage);
+    auto *realDataGroupBox = new QGroupBox("Real data (as comparison or for analysis)");
+    QLabel *dataLabel = new QLabel("Real data");
+    _dataRefRegion = new QComboBox();
+    auto *realDataLayout = new QGridLayout();
+    realDataLayout->addWidget(_readROIFile,0,0);
+    realDataLayout->addWidget(_ROIFileName,0,1);
+    realDataLayout->addWidget(dataLabel,1,0);
+    realDataLayout->addWidget(_dataRefRegion,1,1);
+    realDataGroupBox->setLayout(realDataLayout);
 
     auto *rightLayout = new QVBoxLayout();
     rightLayout->addWidget(setupGroupBox);
     rightLayout->addWidget(plasmaInGroupBox);
     rightLayout->addWidget(RRGroupBox);
+    rightLayout->addWidget(realDataGroupBox);
 
     QHBoxLayout *fullLayout = new QHBoxLayout();
     fullLayout->addLayout(_setupPlotLayout);
@@ -308,19 +326,31 @@ void SimWindow::createSetupPage()
     graphButtons->addAction(dragYAction);
     graphButtons->addAction(rescaleXYAction);
 
+    QFrame* separator1 = new QFrame();
+    separator1->setFrameShape(QFrame::VLine);
+    separator1->setLineWidth(3);
+    separator1->setFrameShadow(QFrame::Raised);
+    QFrame* separator2 = new QFrame();
+    separator2->setFrameShape(QFrame::VLine);
+    separator2->setLineWidth(3);
+    separator2->setFrameShadow(QFrame::Raised);
+    QLabel *showLabel = new QLabel("show:",_setupPage);
     auto *radioShowPlasmaRR  = new QRadioButton("Plasma/RR",_setupPage);
     auto *radioShowPlasma    = new QRadioButton("Plasma",_setupPage);
     auto *radioShowRR        = new QRadioButton("RR",_setupPage);
     radioShowPlasmaRR->setChecked(true);
 
-    QToolBar *graphToolBar = new QToolBar("time tool bar");
-
+    QToolBar *graphToolBar = new QToolBar("graph tool bar");
     graphToolBar->addAction(dragXAction);
     graphToolBar->addAction(dragYAction);
     graphToolBar->addAction(rescaleXYAction);
+    graphToolBar->addWidget(separator1);
+    graphToolBar->addWidget(showLabel);
     graphToolBar->addWidget(radioShowPlasmaRR);
     graphToolBar->addWidget(radioShowPlasma);
     graphToolBar->addWidget(radioShowRR);
+    graphToolBar->addWidget(separator2);
+
     fullLayout->setMenuBar(graphToolBar);
 
     // Make toolbar connections
@@ -336,6 +366,14 @@ void SimWindow::createSetupPage()
     connect(radioShowPlasmaRR, SIGNAL(clicked(bool)), this, SLOT(showPlasmaRR()));
     connect(radioShowPlasma,   SIGNAL(clicked(bool)), this, SLOT(showPlasma()));
     connect(radioShowRR,       SIGNAL(clicked(bool)), this, SLOT(showRR()));
+
+    connect(_tau2Ref,  SIGNAL(editingFinished()), this, SLOT(changedTau2Ref()));
+    connect(_tau1Ref,  SIGNAL(editingFinished()), this, SLOT(changedTau1Ref()));
+    connect(_plasmaFracRef, SIGNAL(editingFinished()), this, SLOT(changedPlasmaFracRef()));
+    connect(_noiseRef, SIGNAL(editingFinished()), this, SLOT(changedNoiseRef()));
+
+    connect(_readROIFile, SIGNAL(pressed()), this, SLOT(getTableDataFile()));
+    connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataRefRegion(int)));
 
     _setupPage->setLayout(fullLayout);
 }
@@ -437,12 +475,12 @@ void SimWindow::createTargetPage()
     connect(_RRPlot,     SIGNAL(changedPointFromGraph(int,int,int)), _basisPlot,   SLOT(changePoint(int,int,int)));
     connect(_RRPlot,     SIGNAL(changedPointFromGraph(int,int,int)), _targetPlot,  SLOT(changePoint(int,int,int)));
 
-    auto *plotLayout = new QVBoxLayout();
-    plotLayout->addWidget(_basisPlot->getPlotSurface());
-    plotLayout->addWidget(_targetPlot->getPlotSurface());
-    plotLayout->addWidget(_TRStatusBar);
-    plotLayout->setStretch(0,1);     // basis plot
-    plotLayout->setStretch(1,1);     // target plot
+    _targetPlotLayout = new QVBoxLayout();
+    _targetPlotLayout->addWidget(_basisPlot->getPlotSurface());
+    _targetPlotLayout->addWidget(_targetPlot->getPlotSurface());
+    _targetPlotLayout->addWidget(_TRStatusBar);
+    _targetPlotLayout->setStretch(0,1);     // basis plot
+    _targetPlotLayout->setStretch(1,1);     // target plot
     QString numberString;
     int editTextSize=80;
 
@@ -622,7 +660,7 @@ void SimWindow::createTargetPage()
     rightLayout->setSpacing(0);
 
     QHBoxLayout *fullLayout = new QHBoxLayout();
-    fullLayout->addLayout(plotLayout);
+    fullLayout->addLayout(_targetPlotLayout);
     fullLayout->addLayout(rightLayout);
     fullLayout->setStretch(0,5);
     fullLayout->setStretch(1,1);
@@ -643,10 +681,53 @@ void SimWindow::createTargetPage()
     graphButtons->addAction(dragYAction);
     graphButtons->addAction(rescaleXYAction);
 
-    QToolBar *graphToolBar = new QToolBar("time tool bar");
+    QFrame* separator1 = new QFrame(_targetPage);
+    separator1->setFrameShape(QFrame::VLine);
+    separator1->setLineWidth(3);
+    separator1->setFrameShadow(QFrame::Raised);
+    QFrame* separator2 = new QFrame(_targetPage);
+    separator2->setFrameShape(QFrame::VLine);
+    separator2->setLineWidth(3);
+    separator2->setFrameShadow(QFrame::Raised);
+    QFrame* separator3 = new QFrame(_targetPage);
+    separator3->setFrameShape(QFrame::VLine);
+    separator3->setLineWidth(3);
+    separator3->setFrameShadow(QFrame::Raised);
+
+    QLabel *showLabel = new QLabel("show:",_targetPage);
+    auto *radioShowBasisTarget = new QRadioButton("Basis/Target",_targetPage);
+    auto *radioShowBasis       = new QRadioButton("Basis",_targetPage);
+    auto *radioShowTarget      = new QRadioButton("Target",_targetPage);
+    QButtonGroup *showGroup = new QButtonGroup(_targetPage);
+    showGroup->addButton(radioShowBasisTarget);
+    showGroup->addButton(radioShowBasis);
+    showGroup->addButton(radioShowTarget);
+    radioShowBasisTarget->setChecked(true);
+
+    QLabel *analyzeLabel = new QLabel("analyze:",_targetPage);
+    _analyzeSimulation = new QRadioButton("Simulation(s)",_targetPage);
+    _analyzeTarget = new QRadioButton("ROI Data",_targetPage);
+    QButtonGroup *analyzeGroup = new QButtonGroup(_targetPage);
+    analyzeGroup->addButton(_analyzeSimulation);
+    analyzeGroup->addButton(_analyzeTarget);
+    _analyzeSimulation->setChecked(true);
+    _analyzeSimulation->setEnabled(false);
+    _analyzeTarget->setEnabled(false);
+
+    QToolBar *graphToolBar = new QToolBar("graph tool bar");
     graphToolBar->addAction(dragXAction);
     graphToolBar->addAction(dragYAction);
     graphToolBar->addAction(rescaleXYAction);
+    graphToolBar->addWidget(separator1);
+    graphToolBar->addWidget(showLabel);
+    graphToolBar->addWidget(radioShowBasisTarget);
+    graphToolBar->addWidget(radioShowBasis);
+    graphToolBar->addWidget(radioShowTarget);
+    graphToolBar->addWidget(separator2);
+    graphToolBar->addWidget(analyzeLabel);
+    graphToolBar->addWidget(_analyzeSimulation);
+    graphToolBar->addWidget(_analyzeTarget);
+    graphToolBar->addWidget(separator3);
     fullLayout->setMenuBar(graphToolBar);
 
     // Make toolbar connections to the main plot, not the basis plot
@@ -656,6 +737,9 @@ void SimWindow::createTargetPage()
     connect(dragXAction,     SIGNAL(triggered(bool)), _targetPlot, SLOT(setXZoom()));
     connect(dragYAction,     SIGNAL(triggered(bool)), _targetPlot, SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _targetPlot, SLOT(autoScale(bool)));
+    connect(radioShowBasisTarget, SIGNAL(clicked(bool)), this, SLOT(showBasisTarget()));
+    connect(radioShowBasis,  SIGNAL(clicked(bool)), this, SLOT(showBasis()));
+    connect(radioShowTarget, SIGNAL(clicked(bool)), this, SLOT(showTarget()));
 
     _targetPage->setLayout(fullLayout);
     qDebug() << "SimWindow::createTargetPage exit";
@@ -924,51 +1008,37 @@ void SimWindow::createVersusTimePage()
 
 }
 
-void SimWindow::changedGraphSizes(int iSelection)
-{
-    if ( iSelection == 0 )
-    { // show both
-        _plasmaPlot->getPlotSurface()->setVisible(true);
-        _RRPlot->getPlotSurface()->setVisible(true);
-        _setupPlotLayout->setStretch(0,1);     // basis plot
-        _setupPlotLayout->setStretch(1,1);     // time plot
-    }
-    else if ( iSelection == 1 )
-    { // data only
-        _plasmaPlot->getPlotSurface()->setVisible(true);
-        _RRPlot->getPlotSurface()->setVisible(false);
-        _setupPlotLayout->setStretch(0,1);     // basis plot
-        _setupPlotLayout->setStretch(1,1);     // time plot
-    }
-    else
-    { // basis only
-        _plasmaPlot->getPlotSurface()->setVisible(false);
-        _RRPlot->getPlotSurface()->setVisible(true);
-        _setupPlotLayout->setStretch(0,1);     // basis plot
-        _setupPlotLayout->setStretch(1,1);     // time plot
-    }
-}
 void SimWindow::showPlasmaRR()
 {
     _plasmaPlot->getPlotSurface()->setVisible(true);
     _RRPlot->getPlotSurface()->setVisible(true);
-    _setupPlotLayout->setStretch(0,1);     // basis plot
-    _setupPlotLayout->setStretch(1,1);     // time plot
 }
 void SimWindow::showPlasma()
 {
     _plasmaPlot->getPlotSurface()->setVisible(true);
     _RRPlot->getPlotSurface()->setVisible(false);
-    _setupPlotLayout->setStretch(0,1);     // basis plot
-    _setupPlotLayout->setStretch(1,1);     // time plot
 }
 void SimWindow::showRR()
 {
     _plasmaPlot->getPlotSurface()->setVisible(false);
     _RRPlot->getPlotSurface()->setVisible(true);
-    _setupPlotLayout->setStretch(0,1);     // basis plot
-    _setupPlotLayout->setStretch(1,1);     // time plot
 }
+void SimWindow::showBasisTarget()
+{
+    _basisPlot->getPlotSurface()->setVisible(true);
+    _targetPlot->getPlotSurface()->setVisible(true);
+}
+void SimWindow::showBasis()
+{
+    _basisPlot->getPlotSurface()->setVisible(true);
+    _targetPlot->getPlotSurface()->setVisible(false);
+}
+void SimWindow::showTarget()
+{
+    _basisPlot->getPlotSurface()->setVisible(false);
+    _targetPlot->getPlotSurface()->setVisible(true);
+}
+
 void SimWindow::updatePlasmaGraph()
 {
     qDebug() << "SimWindow::updatePlasmaGraph enter";
@@ -981,15 +1051,13 @@ void SimWindow::updatePlasmaGraph()
     _plasmaPlot->setLegendOn(true);
     _plasmaPlot->addCurve(0,"plasma");
     _plasmaPlot->setColor(Qt::red);
-    double duration = _simulator.getDuration();
-    double stepSize = _simulator.getStepSize();
-    int nTime = static_cast<int>(duration/stepSize);
+    int nTime = _simulator.getNumberTimeBinsFine();
     dVector xTime; xTime.resize(nTime);
     dVector yTAC;  yTAC.resize(nTime);
     for (int jt=0; jt<nTime; jt++)
     {
-        xTime[jt]   = jt * stepSize;
-        yTAC[jt] = _simulator.getCp(jt);
+        xTime[jt] = _simulator.getTimeFine(jt);
+        yTAC[jt]  = _simulator.getCp(jt);
     }
     _plasmaPlot->setData(xTime,yTAC);
 
@@ -1027,19 +1095,15 @@ void SimWindow::addSimulationCurveRR()
     _RRPlot->addCurve(0,"RR");
     _RRPlot->setColor(Qt::red);
     _RRPlot->setPointSize(5);
-    double duration = _simulator.getDuration();
-    double stepSize = _simulator.getStepSize();
-    int lDownSample = _simulator.getDownSampling();
-    int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+    int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
     dVector yTAC;    yTAC.resize(nTime);
     dMatrix refRegion;  refRegion.resize(1);  refRegion[0].resize(nTime);
     dMatrix timeBins;   timeBins.resize(1);   timeBins[0].resize(nTime);
     for (int jt=0; jt<nTime; jt++)
     {
-        xTime[jt] = jt * lDownSample * stepSize;
+        xTime[jt] = _simulator.getTimeCoarse(jt);
         yTAC[jt]  = refRegion[0][jt] = _simulator.getCrDown(jt);
-        timeBins[0][jt] = stepSize * lDownSample;
     }
     _RRPlot->setData(xTime,yTAC);
 
@@ -1053,6 +1117,8 @@ void SimWindow::addDataCurveRR()
         if ( indexData >= _dataTable.size() )
             qFatal("Fatal Error: the combo-box index exceeds the table index.");
         _RRPlot->addCurve(0,"real data");
+        _RRPlot->setColor(Qt::gray);
+        _RRPlot->setPointSize(5);
         _RRPlot->setData(_dataTable[0],_dataTable[indexData]);
     }
 }
@@ -1095,17 +1161,14 @@ void SimWindow::updateTargetGraph()
     _targetPlot->init();
     _targetPlot->setLegendOn(true);
     _targetPlot->addCurve(0,"target");
-    double duration = _simulator.getDuration();
-    double stepSize = _simulator.getStepSize();
-    int lDownSample = _simulator.getDownSampling();
-    int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+    int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
     dVector yTAC;    yTAC.resize(nTime);
     dMatrix tissueVector;  tissueVector.resize(1);  tissueVector[0].resize(nTime);
     dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
     for (int jt=0; jt<nTime; jt++)
     {
-        xTime[jt] = jt * lDownSample * stepSize;
+        xTime[jt] = _simulator.getTimeCoarse(jt);
         yTAC[jt]  = tissueVector[0][jt] = _simulator.getCtDown(jt);
     }
     _targetPlot->setData(xTime,yTAC);
@@ -1182,21 +1245,19 @@ void SimWindow::defineRTMModel()
     else
     {
         qDebug() << "SimWindow::defineRTMModel 1";
-        double duration = _simulator.getDuration();
-        double stepSize = _simulator.getStepSize();
-        int lDownSample = _simulator.getDownSampling();
-        int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+        int nTime = _simulator.getNumberTimeBinsCoarse();
         if ( firstTime || nTime != _PETRTM.getNumberTimePoints() )
         {
             qDebug() << "SimWindow::defineRTMModel 2";
-            dMatrix timeBins;   timeBins.resize(1);   timeBins[0].resize(nTime);
-            for (int jt=0; jt<nTime; jt++)
-                timeBins[0][jt] = stepSize * lDownSample;
+            dVector timeBins = _simulator.getTimeBinVector();
             dMatrix refRegion; refRegion.resize(1);
             refRegion[0].resize(nTime);
             for (int jt=0; jt<nTime; jt++)
                 refRegion[0][jt] = _simulator.getCrDown(jt);
-            _PETRTM.setReferenceRegion(timeBins,refRegion);
+            qDebug() << "timeBins =" << timeBins;
+            qDebug() << "refRegion =" << refRegion;
+            _PETRTM.setReferenceRegion(refRegion);
+            _PETRTM.setTimeBins(0,timeBins);
         }
         qDebug() << "SimWindow::defineRTMModel 3";
 
@@ -1321,10 +1382,8 @@ void SimWindow::analyzeSimulatedTAC()
     // k2a
     if ( _PETRTM.isFRTMNew() )
     { // get the "k2a" parameter, which really is k4 * k2 * BPND
-        double k4 = 1./_PETRTM.getTau4(0);
         double k2 = _simulator.getk2();
         double BP0 = _simulator.getBP0();
-//        truth = k4 * k2 * BP0;
         truth = k2 * BP0;
     }
     else
@@ -1435,57 +1494,53 @@ void SimWindow::changedNumberThreads(int indexInBox)
     _nSamplesBPnd->setText((numberString.setNum(_nThreads*_numberSimulationsPerThread)));
 }
 
-void SimWindow::changedTimeDuration()
+void SimWindow::changedNumberBins()
 {
-    QString stringEntered = _timeDuration->text();
     bool ok;
-    double duration = stringEntered.toDouble(&ok);
+    int numberBins = _numberTimeBins->text().toInt(&ok);
     if ( ok )
     {
-        _simulator.setDuration(duration);
-        double stepSize = _simulator.getStepSize();
-        int lDownSample = _simulator.getDownSampling();
-        int nTime = static_cast<int>(duration/stepSize) / lDownSample;
-        _PETRTM.setTimePointsInRun(0,nTime);
+        _simulator.setNumberBins(numberBins);
+        _PETRTM.setTimeBins(0,_simulator.getTimeBinVector());
         updateAllGraphs();
     }
     else
-        _timeDuration->setText(stringEntered.setNum(_simulator.getDuration()));
+    {
+        QString text;
+        _binDuration->setText(text.setNum(_simulator.getDuration()));
+    }
 }
-void SimWindow::changedTimeStep()
+void SimWindow::changedBinDuration()
 {
-    QString stringEntered = _timeStep->text();
     bool ok;
-    double stepSize = stringEntered.toDouble(&ok);
+    double duration = _binDuration->text().toDouble(&ok);
     if ( ok )
     {
-        _simulator.setStepSize(stepSize);
-        double duration = _simulator.getDuration();
-        int lDownSample = _simulator.getDownSampling();
-        int nTime = static_cast<int>(duration/stepSize) / lDownSample;
-        _PETRTM.setTimePointsInRun(0,nTime);
+        int iBin = _binIndex->text().toInt(&ok);
+        _simulator.setDurationBin(iBin,duration);
+        _PETRTM.setTimeBins(0,_simulator.getTimeBinVector());
         updateAllGraphs();
     }
     else
-        _timeStep->setText(stringEntered.setNum(_simulator.getStepSize()));
+    {
+        QString text;
+        _binDuration->setText(text.setNum(_simulator.getDuration()));
+    }
 }
-void SimWindow::changedDownSample()
+void SimWindow::changedSubSample()
 {
-    QString stringEntered = _downSample->text();
+    QString stringEntered = _subSample->text();
     bool ok;
-    int lDownSample = stringEntered.toInt(&ok);
+    int lSubSample = stringEntered.toInt(&ok);
+    int iBin = _binIndex->text().toInt(&ok);
     if ( ok )
     {
-        _simulator.setDownSampling(lDownSample);
-        double duration = _simulator.getDuration();
-        double stepSize = _simulator.getStepSize();
-        int lDownSample = _simulator.getDownSampling();
-        int nTime = static_cast<int>(duration/stepSize) / lDownSample;
-        _PETRTM.setTimePointsInRun(0,nTime);
+        _simulator.setSamplesPerBin(iBin,lSubSample);
+        _PETRTM.setTimeBins(0,_simulator.getTimeBinVector());
         updateAllGraphs();
     }
     else
-        _downSample->setText(stringEntered.setNum(_simulator.getDownSampling()));
+        _subSample->setText(stringEntered.setNum(_simulator.getSamplesPerBin(iBin)));
 }
 void SimWindow::changedBolusMag()
 {
@@ -1965,10 +2020,7 @@ void SimWindow::calculateBPndCurves()
     bool calculateTau2Ref = !_PETRTM.isRTM2() || _checkBoxTau2RefGraph->isChecked();
     double saveBPnd = _simulator.getBP0(); // BPnd will be changed, so save the value for later restoration
     QString numberString;
-    double duration = _simulator.getDuration();
-    double stepSize = _simulator.getStepSize();
-    int lDownSample = _simulator.getDownSampling();
-    int nTime = static_cast<int>(duration/stepSize) / lDownSample;
+    int nTime = _simulator.getNumberTimeBinsCoarse();
     dMatrix refRegion;      refRegion.resize(1);    refRegion[0].resize(nTime);
     dMatrix tissueVector;   tissueVector.resize(1); tissueVector[0].resize(nTime);
     dMatrix fitVector;      fitVector.resize(1);    fitVector[0].resize(nTime);
@@ -2139,6 +2191,14 @@ void SimWindow::clearTimeCurves()
 }
 void SimWindow::calculateTimeCurves()
 {
+    QMessageBox msgBox;
+    msgBox.setText("Function calculateTimeCurves() currently disabled");
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.exec();
+}
+/*
+void SimWindow::calculateTimeCurves()
+{
     QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
                          Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
     int nCurves = _errBPndOrChallVsTimePlot->getNumberCurves();
@@ -2165,7 +2225,7 @@ void SimWindow::calculateTimeCurves()
         }
         else
         { // calculate the percent error in BPnd
-            _timeDuration->setText(numberString);  changedTimeDuration();
+//            _binDuration->setText(numberString);  changedTimeDuration();
             double truth = _simulator.getBP0();
             double guess = _PETRTM.getBP0InRun(0);
             errVector.append(percentageError(guess,truth));
@@ -2174,7 +2234,7 @@ void SimWindow::calculateTimeCurves()
     }
     // restore the time duration and challenge time
     QString numberString;
-    _timeDuration->setText(numberString.setNum(saveTimeDuration));
+    _binDuration->setText(numberString.setNum(saveTimeDuration));
     _challengeTime->setText(numberString.setNum(saveChallengeTime));
     changedChallengeTime();  // this will update the simulation and also the challenge time in analysis
 
@@ -2182,7 +2242,7 @@ void SimWindow::calculateTimeCurves()
     _errBPndOrChallVsTimePlot->conclude(0,true);
     _errBPndOrChallVsTimePlot->plotDataAndFit(true);
 }
-
+*/
 void SimWindow::calculateBPndCurvesInThreads()
 {
     qDebug() << "SimWindow::calculateBPndCurvesInThreads enter";

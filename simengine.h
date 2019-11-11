@@ -8,10 +8,13 @@ class simEngine
 {
 private:
     // Input quantities ///////////////////////
-    // Setup
-    double _duration=90.;
-    double _dt=0.1;
-    int _lDownSample=10;
+    // Setup bins
+    int _nBins = 90;
+    dVector _durationBin;     // [_nBins]; seconds
+    iVector _numberSamplesPerBin;  // [_nBins]
+    dVector _dtFine;          // [sum of _numberSamplesPerBin = # of fine bins]
+    dVector _timeFine;        // [sum of _numberSamplesPerBin = # of fine bins]
+    dVector _timeCoarse;      // [_nBins]
     // Infusion
     double _magBolus=15.e5;
     double _tauBolus=0.25;
@@ -54,17 +57,19 @@ private:
     dVector _CrBinned;
     dVector _CtBinned;
 
+    void initializeBins();
     dVector downSample(dVector original);
     void addNoise(double noiseScale, dVector &downSampled);
     double GaussianRandomizer(double sigma, double cutoff);
 
     // calculate analytical solutions
-    double integralOf(dVector tissue, int iTime, bool downSample);
+    double integralOf(dVector tissue, int iTime);
     dVector differentiateTissueVector();
-    dVector calculateConvolution(dVector tissue, bool downSample);
+    dVector calculateConvolution(dVector tissue);
 
 public:
     simEngine();
+    void updateFineSamples();
     void run();
     void generatePlasmaTAC();
     void generateReferenceTAC();
@@ -77,9 +82,7 @@ public:
     // setters
     inline void setSRTM()                     {_SRTM = true;}
     inline void setFRTM()                     {_SRTM = false;}
-    inline void setDuration(double value)     {_duration = value;}
-    inline void setStepSize(double value)     {_dt = value;}
-    inline void setDownSampling(int lValue)   {_lDownSample = lValue;}
+    inline void setNumberBins(int nBins)      {_nBins = nBins; initializeBins();}
     inline void setMagBolus(double value)     {_magBolus = value;}
     inline void setTauBolus(double value)     {_tauBolus = value;}
     inline void setKBol(double value)         {_KBol = value;}
@@ -105,13 +108,14 @@ public:
     inline void setChallengeMag(double value) {_deltaBPPercent = value;}
     inline void setPlasmaPercentRef(double value){_percentPlasmaRef = value;}
     inline void setPlasmaPercentTar(double value){_percentPlasmaTar = value;}
+    inline void setSamplesPerBin(int lBin, int nSamples) {_numberSamplesPerBin[lBin] = nSamples;  updateFineSamples();}
+    inline void setDurationBin(int lBin, double duration) {_durationBin[lBin] = duration;    updateFineSamples();}
 
     // getters
+    inline int getNumberTimeBinsFine()   {return _dtFine.size();}
+    inline int getNumberTimeBinsCoarse() {return _timeCoarse.size();}
     inline bool getSRTM()           {return _SRTM;}
-    inline double getDuration()     {return _duration;}
-    inline double getStepSize()     {return _dt;}
-    inline int getDownSampling()    {return _lDownSample;}
-    inline double getBinResolution(){return _dt*_lDownSample;}
+    inline int getNumberBins()      {return _nBins;}
     inline double getMagBolus()     {return _magBolus;}
     inline double getTauBolus()     {return _tauBolus;}
     inline double getKBol()  {return _KBol;}
@@ -133,6 +137,12 @@ public:
     inline double getk3()           {return _k3;}
     inline double getk2a()          {return _k2/(1.+_BP0);}
     inline double getk2k3()         {return _k2 * _k3;}  // or k2 * k4 * BPnd
+    inline int getSamplesPerBin(int lBin) {return _numberSamplesPerBin[lBin];}
+    inline double getDurationPerBin(int lBin) {return _durationBin[lBin];}
+    inline dVector getTimeBinVector()    {return _durationBin;}
+    inline double getTimeFine(int iTime) {return _timeFine[iTime];}
+    inline double getTimeCoarse(int iTime) {return _timeCoarse[iTime];}
+    double getDuration();
     double getdk2a();
     double getdk2k3();
 

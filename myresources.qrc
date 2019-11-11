@@ -6,5 +6,6 @@
         <file>My-Icons/calculator.png</file>
         <file>My-Icons/eraser.png</file>
         <file>My-Icons/positron.png</file>
+        <file>My-Icons/openFile.png</file>
     </qresource>
 </RCC>

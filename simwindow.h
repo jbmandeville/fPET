@@ -58,10 +58,13 @@ private:
 
     // setup page
     QVBoxLayout *_setupPlotLayout;
+    QVBoxLayout *_targetPlotLayout;
     // timing
-    QLineEdit *_timeDuration;
+    QLineEdit *_numberTimeBins;
+    QSpinBox *_binIndex;
+    QLineEdit *_binDuration;
     QLineEdit *_timeStep;
-    QLineEdit *_downSample;
+    QLineEdit *_subSample;
     // bolus in/out
     QLineEdit *_bolusMag;
     QLineEdit *_tauDecay;
@@ -83,8 +86,12 @@ private:
     QLineEdit *_noiseRef;
     QComboBox *_dataRefRegion;
     QPushButton *_calcRRMatch;
+    QPushButton *_readROIFile;
+    QLabel *_ROIFileName;
 
     // target region input
+    QRadioButton *_analyzeTarget;
+    QRadioButton *_analyzeSimulation;
     QLineEdit *_BPnd;
     QLineEdit *_R1;
     QLineEdit *_tau4;
@@ -151,7 +158,6 @@ private:
     void updateBasisGraph();
     void updateTargetGraph();
     void updateAllGraphs();
-    void getTableDataFile();
     QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
     void enablePlasmaMatching(bool state);
     void addSimulationCurveRR();
@@ -172,14 +178,16 @@ private:
 
 private slots:
     void changedNumberThreads(int indexInBox);
-    void changedGraphSizes(int iSelection);
     void showPlasmaRR();
     void showPlasma();
     void showRR();
+    void showBasisTarget();
+    void showBasis();
+    void showTarget();
 
-    void changedTimeDuration();
-    void changedTimeStep();
-    void changedDownSample();
+    void changedNumberBins();
+    void changedBinDuration();
+    void changedSubSample();
     void changedBolusMag();
     void changedTauBolus();
     void changedInfusion();
@@ -226,6 +234,8 @@ private slots:
     void changedTimeHigh();
     void calculateTimeCurves();
     void clearTimeCurves();
+
+    void getTableDataFile();
 
 public slots:
     void updateLieDetectorProgress(int iProgress);

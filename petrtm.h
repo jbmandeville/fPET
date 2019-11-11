@@ -97,6 +97,7 @@ private:
     // tissue vectors
     QVector<QStringList> _columnNames; // [_nRuns]
     dMatrix3 _table;                  // [_nRuns][_nTimeInRun][nColumns]; used for creating integrals
+    dMatrix _dtBins;                  // [_nRuns][_nTimeInRun]; this should be _table column 0 converted to minutes
     dMatrix _refRegionRaw;            // [_nRuns][_nTimeInRun]; actual ref region data
     dMatrix _refRegion;               // [_nRuns][_nTimeInRun]; value used in analysis (either raw or fit)
     dMatrix _refRegionIntegral;       // [_nRuns][_nTimeInRun]; integral of raw or fit
@@ -220,6 +221,7 @@ public:
     void setChallengeOffset(int indexChallenge, int indexStimulus, double time);
     void setChallengeTau(int indexChallenge, double tau);
     void setChallengeAlpha(int indexChallenge, double alpha);
+    void setTimeBins(int iRun, dVector timeBins);
     void setReferenceRegion(dMatrix referenceRegionRaw);
     void setReferenceRegion(dMatrix timeBins, dMatrix referenceRegionRaw);
     void setReferenceRegionFromTableColumn(int iColumn);
