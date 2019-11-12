@@ -15,9 +15,11 @@ public:
 private:
     simEngine _simulator;
     PETRTM _PETRTM;
-    QStringList _dataColumnNames;
-    dMatrix _dataTable;
-    bool _analyzeRealData = false;
+    // Import real data as ROIs from a table file
+    QStringList _dataColumnNames; // column names
+    dMatrix _dataTable;           // data table
+    dVector _dtBins;              // dt steps in time bins
+    dVector _timeBins;            // time for bins (center of bin)
 
     double _BPndLowValue  = 1.0;
     double _BPndHighValue = 5.0;
@@ -90,7 +92,7 @@ private:
     QLabel *_ROIFileName;
 
     // target region input
-    QRadioButton *_analyzeTarget;
+    QRadioButton *_analyzeRealData;
     QRadioButton *_analyzeSimulation;
     QLineEdit *_BPnd;
     QLineEdit *_R1;
@@ -174,7 +176,8 @@ private:
     double calculateMean(dVector vec);
     double calculateStDev(double mean, dVector vec);
     void enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool enable);
-    inline bool realDataAvailable() {return _dataTable.size() != 0;}
+    inline bool realDataAvailable() {return _dataTable.size() != 0 && _dataRefRegion->count() != 0;}
+    inline bool analyzeRealData() {return _analyzeRealData->isChecked();}
 
 private slots:
     void changedNumberThreads(int indexInBox);

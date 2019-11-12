@@ -9,19 +9,23 @@ simEngine::simEngine()
 {
     // initialize
     initializeBins();
-    updateFineSamples();
     // run
     run();
 }
 void simEngine::initializeBins()
 {
-    _durationBin.fill(6.,_nBins);
-    _numberSamplesPerBin.fill(10,_nBins);
+    qDebug() << "simEngine::initializeBins enter";
+    if ( _nBins != _durationBin.size() )
+        _durationBin.fill(1.,_nBins);  // duration in min
+    if ( _nBins != _numberSamplesPerBin.size() )
+        _numberSamplesPerBin.fill(10,_nBins);
+    updateFineSamples();
 }
 void simEngine::updateFineSamples()
 {
     _dtFine.clear();  _timeFine.clear(); _timeCoarse.clear();
     double time=0.;
+    qDebug() << "simEngine::updateFineSamples bins" << _durationBin;
     for (int jBin=0; jBin<_nBins; jBin++)
     {
         double dtFine = _durationBin[jBin] / _numberSamplesPerBin[jBin];
@@ -29,14 +33,17 @@ void simEngine::updateFineSamples()
         for (int jSample=0; jSample<_numberSamplesPerBin[jBin]; jSample++)
         {
             _dtFine.append(dtFine);
-            time += dtFine;
-            _timeFine.append(time);
-            avTime += time;
+            _timeFine.append(time + dtFine/2.);
+            avTime += _timeFine.last();
+//            qDebug() << "avTime =" << avTime;
+            time += dtFine;  // start of bin
         }
         avTime /= static_cast<double>(_numberSamplesPerBin[jBin]);
         _timeCoarse.append(avTime);
     }
-
+//    qDebug() << "dtFine" << _dtFine;
+//    qDebug() << "timeFine" << _timeFine;
+//    qDebug() << "timeCoarse" << _timeCoarse;
 }
 
 void simEngine::run()
@@ -66,7 +73,7 @@ void simEngine::generatePlasmaTAC()
         magInfusion = _magBolus * exp(1) * _tauBolus / _KBol;
     for ( int jt=0; jt<nTime; jt++)
     {
-        double time = jt * _dtFine[jt];
+        double time = _timeFine[jt];
         double plasmaInput = magInfusion + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
         if ( jt != 0. )
         {
@@ -84,6 +91,7 @@ void simEngine::generateReferenceTAC()
 {
     // dCr_dt = K1 * Cp - k2 * Cr;
     int nTime = _dtFine.size();
+//    qDebug() << "nTime =" << nTime << "dtFile =" << _dtFine;
     double Cr = 0.;
     _Cr.clear();
     for ( int jt=0; jt<nTime; jt++)
@@ -97,9 +105,11 @@ void simEngine::generateReferenceTAC()
         // Cp is conc(tracer)/volume(blood), whereas Cr is conc(tracer)/volume(tissue), so multiple Cp by volume(blood)/volume(tissue)
         _Cr.append(Cr + _percentPlasmaRef/100. * Cp);
     }
+//    qDebug() << "Cr =" << _Cr;
 
     // Downsample the TAC and add Noise
     _CrBinned = downSample(_Cr);
+//    qDebug() << "CrBinnged =" << _CrBinned;
     addNoise(_noiseRef, _CrBinned);
 }
 

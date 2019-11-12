@@ -1,6 +1,8 @@
 #ifndef SIMENGINE_H
 #define SIMENGINE_H
 
+#include <QDebug>
+
 #include "io.h"
 
 
@@ -108,8 +110,9 @@ public:
     inline void setChallengeMag(double value) {_deltaBPPercent = value;}
     inline void setPlasmaPercentRef(double value){_percentPlasmaRef = value;}
     inline void setPlasmaPercentTar(double value){_percentPlasmaTar = value;}
-    inline void setSamplesPerBin(int lBin, int nSamples) {_numberSamplesPerBin[lBin] = nSamples;  updateFineSamples();}
-    inline void setDurationBin(int lBin, double duration) {_durationBin[lBin] = duration;    updateFineSamples();}
+    inline void setSamplesPerBin(int lBin, int nSamples)  {_numberSamplesPerBin[lBin] = nSamples;  qDebug() << "call1"; updateFineSamples();}
+    inline void setDurationBin(int lBin, double duration) {_durationBin[lBin] = duration;          qDebug() << "call2"; updateFineSamples();}
+    inline void setDurationBins(dVector durationVector)   {_durationBin = durationVector;          qDebug() << "call3"; updateFineSamples();}
 
     // getters
     inline int getNumberTimeBinsFine()   {return _dtFine.size();}

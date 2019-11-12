@@ -7,6 +7,7 @@
 #include <QFileDialog>
 #include <QFile>
 #include "io.h"
+//#include <fftw3.h>
 
 namespace utilIO
 {
@@ -246,7 +247,6 @@ namespace utilIO
 ////////////////////////////////////////////////////////////////////////////
 namespace utilMath
 {
-
 
 bool dInvertSquareMatrix( dMatrix &dSquareMatrix )
 {

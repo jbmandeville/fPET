@@ -1307,7 +1307,7 @@ void PETRTM::setTimeBins(int iRun, dVector timeBins)
     if ( iRun < _nRuns )
     {
         if ( timeBins.size() != _refRegion.size() )
-            qInfo() << "Error: the number of time bins " << timeBins.size() << ") does not match the reference region (" << _refRegion.size() << ").";
+            qInfo() << "Error: the number of time bins (" << timeBins.size() << ") does not match the reference region (" << _refRegion.size() << ").";
         else
             _dtBins[iRun] = timeBins;
     }
@@ -1350,21 +1350,28 @@ void PETRTM::setReferenceRegion(dMatrix timeBins, dMatrix referenceRegionRaw) //
 
 void PETRTM::setReferenceRegion(dMatrix referenceRegionRaw)
 {  // set the raw and fit version of the reference region
+    qDebug() << "PETRTM::setReferenceRegion enter";
     _refRegionRaw = referenceRegionRaw;
+    qDebug() << "PETRTM::setReferenceRegion 1";
     updateReferenceRegion();
+    qDebug() << "PETRTM::setReferenceRegion 2";
     setPrepared(false);
     _referenceRegionIsDefined = true;
 }
 
 void PETRTM::updateReferenceRegion()
 {
+    qDebug() << "PETRTM::updateReferenceRegion enter";
     _refRegion = _refRegionRaw;
     if ( _smoothingScale != 0. )
         fitLoessCurve(_refRegion);
     _refRegionIntegral = _refRegion;
     _refRegionDeriv    = _refRegion;
+    qDebug() << "PETRTM::updateReferenceRegion 1";
     integrateByRun(_refRegionIntegral);
+    qDebug() << "PETRTM::updateReferenceRegion 2";
     differentiateByRun(_refRegionDeriv);
+    qDebug() << "PETRTM::updateReferenceRegion exit";
     setPrepared(false);
 }
 
@@ -1830,11 +1837,7 @@ int PETRTM::readTimeBinsFile(int iRun, QString fileName)
 
     _dtBins[iRun].resize(_table[iRun].size());
     for ( int jt=0; jt<_table[iRun].size(); jt++)
-    {
-        double dt = _table[iRun][jt][0];
-        dt /= 60.;                // seconds to minutes
-        _dtBins[iRun][jt] = dt;
-    }
+        _dtBins[iRun][jt] = _table[iRun][jt][0] / 60.; // sec to minutes
 
     if ( _smoothingScale != 0. )
         defineLOESSFitting(iRun);
@@ -3322,7 +3325,9 @@ void PETRTM::createChallengeShape(int iRun, int indexChallenge, dVector &shape)
 }
 void PETRTM::integrateByRun(dMatrix &runMatrix )  // [nRuns][nTimePerRun]
 {
+    qDebug() << "PETRTM::integrateByRun enter";
     dMatrix copiedMatrix = runMatrix;
+    qDebug() << "PETRTM::integrateByRun 1" << _dtBins.size();
     if ( _dtBins.size() != _nRuns )
     { // this is just to provide a "default" option; bins sizes may differ in time
         _dtBins.resize(_nRuns);
@@ -3349,6 +3354,7 @@ void PETRTM::integrateByRun(dMatrix &runMatrix )  // [nRuns][nTimePerRun]
             runMatrix[jRun][jt] = integral;
         }
     }
+    qDebug() << "PETRTM::integrateByRun exit";
 }
 
 void PETRTM::differentiateByRun(dMatrix &runMatrix )  // [nRuns][nTimePerRun]

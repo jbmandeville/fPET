@@ -95,6 +95,9 @@ void SimWindow::getTableDataFile()
     else
     {
         QString errorString = readTableFile(fileName, _dataColumnNames, _dataTable);
+        qDebug() << "_dataColumnNames" << _dataColumnNames;
+        qDebug() << "_dataTable size" << _dataTable.size();
+        qDebug() << "_dataTable column0" << _dataTable[0];
         if ( !errorString.isEmpty() )
         {
             QMessageBox msgBox;
@@ -104,6 +107,16 @@ void SimWindow::getTableDataFile()
         }
         else
         {
+            // Convert 1st column to time bins
+            _dtBins.clear();  _timeBins.clear();
+            double time=_dataTable[0][0]/60./2.;  // center of 1st bin in min
+            for ( int jt=0; jt<_dataTable[0].size(); jt++)
+            {
+                _dtBins.append(_dataTable[0][jt]/60.); // seconds to minutes
+                _timeBins.append(time);
+                time += _dtBins.last();
+            }
+            // update the GUI to refect the new information
             _dataRefRegion->clear();
             for (int jColumn=1; jColumn<_dataColumnNames.count(); jColumn++)
                 _dataRefRegion->addItem(_dataColumnNames.at(jColumn));
@@ -111,6 +124,12 @@ void SimWindow::getTableDataFile()
             enablePlasmaMatching(true);
             _ROIFileName->setToolTip(fileName);
             _ROIFileName->setText(utilString::getFileNameWithoutDirectory(fileName));
+            // Resample the simulation to match the binning of the real data
+            QString text;
+            _numberTimeBins->setText(text.setNum(_dtBins.size())); changedNumberBins();
+            qDebug() << "SimWindow::getTableDataFile setDurationBins" << _dtBins;
+            _simulator.setDurationBins(_dtBins);
+            updateAllGraphs();
         }
     }
 }
@@ -151,8 +170,6 @@ void SimWindow::createSetupPage()
 
     // setup (duration, step, down-sampling
     _binIndex = new QSpinBox();
-
-
     auto *setupGroupBox = new QGroupBox("Setup the simulation");
     QLabel *numberTimeBinsLabel = new QLabel("# time bins");
     QLabel *binIndexLabel = new QLabel("bin index");
@@ -165,7 +182,7 @@ void SimWindow::createSetupPage()
     _subSample->setFixedWidth(editTextSize);
     QString text;
     _numberTimeBins->setText(text.setNum(_simulator.getNumberBins()));
-    _binDuration->setText(text.setNum(_simulator.getDurationPerBin(0)));
+    _binDuration->setText(text.setNum(_simulator.getDurationPerBin(0)*60.));
     _subSample->setText(numberString.setNum(_simulator.getSamplesPerBin(0)));
 
     auto *setupLayout = new QGridLayout();
@@ -317,10 +334,14 @@ void SimWindow::createSetupPage()
     auto *dragYAction = new QAction(*dragY, tr("drag/zoom Y axis"), this);
     const QIcon *rescaleXY = new QIcon(":/My-Icons/rescaleGraph.png");
     auto *rescaleXYAction = new QAction(*rescaleXY, tr("Auto-scale X and Y ranges"), this);
+    const QIcon *crossIcon = new QIcon(":/My-Icons/cursor-cross.png");
+    auto *crossCursorAct = new QAction(*crossIcon, tr("Select time points"), this);
     dragXAction->setCheckable(true);
     dragYAction->setCheckable(true);
     rescaleXYAction->setCheckable(true);
     rescaleXYAction->setChecked(true);
+    crossCursorAct->setCheckable(true);
+    crossCursorAct->setChecked(true);
     QActionGroup *graphButtons = new QActionGroup(this);
     graphButtons->addAction(dragXAction);
     graphButtons->addAction(dragYAction);
@@ -344,6 +365,7 @@ void SimWindow::createSetupPage()
     graphToolBar->addAction(dragXAction);
     graphToolBar->addAction(dragYAction);
     graphToolBar->addAction(rescaleXYAction);
+//    graphToolBar->addAction(crossCursorAct);
     graphToolBar->addWidget(separator1);
     graphToolBar->addWidget(showLabel);
     graphToolBar->addWidget(radioShowPlasmaRR);
@@ -358,10 +380,13 @@ void SimWindow::createSetupPage()
     connect(dragYAction,     SIGNAL(triggered(bool)), _plasmaPlot, SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _plasmaPlot, SLOT(autoScale(bool)));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _plasmaPlot, SLOT(setSelectPoints()));
+//    connect(crossCursorAct,  SIGNAL(triggered(bool)), _plasmaPlot, SLOT(setSelectPoints()));
+
     connect(dragXAction,     SIGNAL(triggered(bool)), _RRPlot, SLOT(setXZoom()));
     connect(dragYAction,     SIGNAL(triggered(bool)), _RRPlot, SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _RRPlot, SLOT(autoScale(bool)));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _RRPlot, SLOT(setSelectPoints()));
+//    connect(crossCursorAct,  SIGNAL(triggered(bool)), _RRPlot, SLOT(setSelectPoints()));
 
     connect(radioShowPlasmaRR, SIGNAL(clicked(bool)), this, SLOT(showPlasmaRR()));
     connect(radioShowPlasma,   SIGNAL(clicked(bool)), this, SLOT(showPlasma()));
@@ -706,13 +731,11 @@ void SimWindow::createTargetPage()
 
     QLabel *analyzeLabel = new QLabel("analyze:",_targetPage);
     _analyzeSimulation = new QRadioButton("Simulation(s)",_targetPage);
-    _analyzeTarget = new QRadioButton("ROI Data",_targetPage);
+    _analyzeRealData = new QRadioButton("ROI Data",_targetPage);
     QButtonGroup *analyzeGroup = new QButtonGroup(_targetPage);
     analyzeGroup->addButton(_analyzeSimulation);
-    analyzeGroup->addButton(_analyzeTarget);
+    analyzeGroup->addButton(_analyzeRealData);
     _analyzeSimulation->setChecked(true);
-    _analyzeSimulation->setEnabled(false);
-    _analyzeTarget->setEnabled(false);
 
     QToolBar *graphToolBar = new QToolBar("graph tool bar");
     graphToolBar->addAction(dragXAction);
@@ -726,7 +749,7 @@ void SimWindow::createTargetPage()
     graphToolBar->addWidget(separator2);
     graphToolBar->addWidget(analyzeLabel);
     graphToolBar->addWidget(_analyzeSimulation);
-    graphToolBar->addWidget(_analyzeTarget);
+    graphToolBar->addWidget(_analyzeRealData);
     graphToolBar->addWidget(separator3);
     fullLayout->setMenuBar(graphToolBar);
 
@@ -1081,8 +1104,18 @@ void SimWindow::updateReferenceGraph()
     _RRPlot->init();
     _RRPlot->setLegendOn(true);
 
-    addSimulationCurveRR();
-    addDataCurveRR();
+    if ( realDataAvailable() )
+    {
+        qDebug() << "read data not available";
+        addDataCurveRR();
+        addSimulationCurveRR();
+    }
+    else
+    {
+        qDebug() << "read data available";
+        addSimulationCurveRR();
+        addDataCurveRR();
+    }
 
     _RRPlot->conclude(0,true);
     _RRPlot->plotDataAndFit(true);
@@ -1105,12 +1138,13 @@ void SimWindow::addSimulationCurveRR()
         xTime[jt] = _simulator.getTimeCoarse(jt);
         yTAC[jt]  = refRegion[0][jt] = _simulator.getCrDown(jt);
     }
+    qDebug() << "SimWindow::addSimulationCurveRR bins" << xTime;
+//    qDebug() << "SimWindow::addSimulationCurveRR RR"   << yTAC;
     _RRPlot->setData(xTime,yTAC);
-
 }
 void SimWindow::addDataCurveRR()
 {
-    if ( _dataRefRegion->count() != 0 )
+    if ( realDataAvailable() )
     {
         int indexInBox = _dataRefRegion->currentIndex();
         int indexData  = indexInBox + 1;  // data index 0 is time
@@ -1119,37 +1153,19 @@ void SimWindow::addDataCurveRR()
         _RRPlot->addCurve(0,"real data");
         _RRPlot->setColor(Qt::gray);
         _RRPlot->setPointSize(5);
-        _RRPlot->setData(_dataTable[0],_dataTable[indexData]);
+        _RRPlot->setData(_timeBins,_dataTable[indexData]);
+        qDebug() << "SimWindow::addDataCurveRR bins" << _timeBins;
+//        qDebug() << "SimWindow::addDataCurveRR RR" << _dataTable[indexData];
+        // enable buttons
+        _analyzeSimulation->setEnabled(true);
+        _analyzeRealData->setEnabled(true);
     }
-}
-/*
-dMatrix SimWindow::convertTimePointsToTimeFrames(dMatrix timePoints)
-{ // timePoints should represent centers of bins
-    dMatrix bins;  bins.resize(timePoints.size());
-    for ( int jRun=0; jRun<timePoints.size(); jRun++)
+    else
     {
-        int nTime = timePoints[jRun].size();
-        bins[jRun].resize(nTime);
-        for (int j=0; j<nTime; j++)
-        {
-            double low, high;
-            if ( j == 0 )
-                low = 0.;
-            else
-                low = (timePoints[jRun][j-1] + timePoints[jRun][j]) / 2.;  // average of bins
-            if ( j == nTime-1 )
-            { // duration of scan is unknown, so find the lower edge to define the bin width
-                double lowerEdge = timePoints[jRun][j-1] + bins[jRun][j-1];
-                double halfWidth = timePoints[jRun][j-1] - lowerEdge;
-                high = timePoints[jRun][j] + halfWidth;
-            }
-            else
-                high = timePoints[jRun][j] + timePoints[jRun][j+1] / 2.;  // average of bins
-            bins[jRun][j] = high - low;
-        }
+        _analyzeSimulation->setEnabled(false);
+        _analyzeRealData->setEnabled(false);
     }
 }
-*/
 
 void SimWindow::updateTargetGraph()
 {
@@ -1233,7 +1249,7 @@ void SimWindow::defineRTMModel()
 {
     qDebug() << "SimWindow::defineRTMModel enter";
     static int firstTime=true;
-    if ( _analyzeRealData )
+    if ( analyzeRealData() )
     {
         // matrices: [nRuns][nTime]
         dMatrix timeBins;  timeBins.resize(1);
@@ -1249,15 +1265,15 @@ void SimWindow::defineRTMModel()
         if ( firstTime || nTime != _PETRTM.getNumberTimePoints() )
         {
             qDebug() << "SimWindow::defineRTMModel 2";
-            dVector timeBins = _simulator.getTimeBinVector();
+            dMatrix timeBins;  timeBins.resize(1);
+            timeBins[0] = _simulator.getTimeBinVector();
             dMatrix refRegion; refRegion.resize(1);
             refRegion[0].resize(nTime);
             for (int jt=0; jt<nTime; jt++)
                 refRegion[0][jt] = _simulator.getCrDown(jt);
             qDebug() << "timeBins =" << timeBins;
             qDebug() << "refRegion =" << refRegion;
-            _PETRTM.setReferenceRegion(refRegion);
-            _PETRTM.setTimeBins(0,timeBins);
+            _PETRTM.setReferenceRegion(timeBins,refRegion);
         }
         qDebug() << "SimWindow::defineRTMModel 3";
 
@@ -1517,7 +1533,7 @@ void SimWindow::changedBinDuration()
     if ( ok )
     {
         int iBin = _binIndex->text().toInt(&ok);
-        _simulator.setDurationBin(iBin,duration);
+        _simulator.setDurationBin(iBin,duration/60.);  // convert sec to min
         _PETRTM.setTimeBins(0,_simulator.getTimeBinVector());
         updateAllGraphs();
     }
