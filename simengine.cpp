@@ -1,7 +1,7 @@
 #include "simengine.h"
 #include <QtMath>
 #include <QDebug>
-//#include <QRandomGenerator>
+//#include <QRandomGenerator> // include only in Qt5.10 and higher
 
 #define RAND_0_1 (rand()/2147483647.)
 
