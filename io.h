@@ -190,8 +190,8 @@ namespace utilIO
 
     void delayMS( int millisecondsToWait );
 
-    int readTableFile(int iRun, QString fileName, QStringList &columnNames, dMatrix3 &table, QStringList &warningErrors);
-
+    QString readTimeTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
+    QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
 }
 
 namespace utilMath

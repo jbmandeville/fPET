@@ -17,7 +17,7 @@ private:
     PETRTM _PETRTM;
     // Import real data as ROIs from a table file
     QStringList _dataColumnNames; // column names
-    dMatrix _dataTable;           // data table
+    dMatrix _dataTable;           // data table [time][columns]
     dVector _dtBins;              // dt steps in time bins
     dVector _timeBins;            // time for bins (center of bin)
 
@@ -92,8 +92,11 @@ private:
     QLabel *_ROIFileName;
 
     // target region input
+    QGroupBox *_targetSimulationGroupBox;
+    QGroupBox *_targetDataGroupBox;
     QRadioButton *_analyzeRealData;
     QRadioButton *_analyzeSimulation;
+    QComboBox *_dataTargetRegion;
     QLineEdit *_BPnd;
     QLineEdit *_R1;
     QLineEdit *_tau4;
@@ -159,11 +162,11 @@ private:
     void updateReferenceGraph();
     void updateBasisGraph();
     void updateTargetGraph();
-    void updateAllGraphs();
-    QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
     void enablePlasmaMatching(bool state);
     void addSimulationCurveRR();
     void addDataCurveRR();
+    void addSimulationCurveTarget();
+    void addDataCurveTarget();
     void defineRTMModel();
 
     void analyzeSimulatedTAC();
@@ -180,6 +183,7 @@ private:
     inline bool analyzeRealData() {return _analyzeRealData->isChecked();}
 
 private slots:
+    void updateAllGraphs();
     void changedNumberThreads(int indexInBox);
     void showPlasmaRR();
     void showPlasma();
@@ -203,7 +207,6 @@ private slots:
     void changedTau1Ref();
     void changedPlasmaFracRef();
     void changedNoiseRef();
-    void changedDataRefRegion(int indexInBox);
 
     void changedWeightType(int indexInBox);
     void changedModelType(int indexInBox);
@@ -239,6 +242,8 @@ private slots:
     void clearTimeCurves();
 
     void getTableDataFile();
+    bool defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn);
+    bool defineTimeBinsFromTimePoints(QStringList validBinName, int &iColumn);
 
 public slots:
     void updateLieDetectorProgress(int iProgress);

@@ -94,10 +94,16 @@ void SimWindow::getTableDataFile()
         return;
     else
     {
-        QString errorString = readTableFile(fileName, _dataColumnNames, _dataTable);
+        qDebug() << "readTableFile";
+        QString errorString = utilIO::readTableFile(fileName, _dataColumnNames, _dataTable);
         qDebug() << "_dataColumnNames" << _dataColumnNames;
         qDebug() << "_dataTable size" << _dataTable.size();
         qDebug() << "_dataTable column0" << _dataTable[0];
+        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("put"), Qt::CaseInsensitive);
+        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("putamen", Qt::CaseInsensitive));
+        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("put*", Qt::CaseInsensitive));
+        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("put*", Qt::CaseInsensitive, QRegExp::Wildcard));
+        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("*put", Qt::CaseInsensitive, QRegExp::Wildcard));
         if ( !errorString.isEmpty() )
         {
             QMessageBox msgBox;
@@ -107,20 +113,46 @@ void SimWindow::getTableDataFile()
         }
         else
         {
-            // Convert 1st column to time bins
-            _dtBins.clear();  _timeBins.clear();
-            double time=_dataTable[0][0]/60./2.;  // center of 1st bin in min
-            for ( int jt=0; jt<_dataTable[0].size(); jt++)
+            qDebug() << "getTableDataFile 1";
+            QStringList validBinSizeName = {"dt","deltaTime","delta-time","delta_time",
+                                            "binSize","bin-size","bin_size",
+                                            "binTime","bin-time","bin_time",
+                                            "frameDuration","frame-duration","frame_duration",
+                                            "frameSize","frame-size","frame_size"};
+            QStringList validBinTimeName = {"t","time","time-point","time_point",
+                                            "frameTime","frame-time","frame_time"};
+            int iColumnBinSize=-1;  int iColumnBinTime=-1;
+            if ( !defineTimeBinsFromBinSize(validBinSizeName, iColumnBinSize) )
             {
-                _dtBins.append(_dataTable[0][jt]/60.); // seconds to minutes
-                _timeBins.append(time);
-                time += _dtBins.last();
+                qDebug() << "getTableDataFile 2";
+                if ( !defineTimeBinsFromTimePoints(validBinTimeName, iColumnBinTime) )
+                {
+                    qDebug() << "getTableDataFile 3";
+                    qDebug() << "getTableDataFile 4";
+                    QString binList = validBinSizeName.join(", ");
+                    QString binTime = validBinTimeName.join(", ");
+                    QMessageBox msgBox;
+                    errorString = QString("The table must include either frame durations (1) or time points (2).\n(1)%1\n(2)%2").
+                            arg(binList).arg(binTime);
+                    msgBox.setText(errorString);
+                    msgBox.setIcon(QMessageBox::Critical);
+                    msgBox.exec();
+                    return;
+                }
             }
             // update the GUI to refect the new information
             _dataRefRegion->clear();
-            for (int jColumn=1; jColumn<_dataColumnNames.count(); jColumn++)
+            _dataTargetRegion->clear();
+            for (int jColumn=0; jColumn<_dataColumnNames.count(); jColumn++)
+            {
                 _dataRefRegion->addItem(_dataColumnNames.at(jColumn));
+                _dataTargetRegion->addItem(_dataColumnNames.at(jColumn));
+            }
             _dataRefRegion->setCurrentIndex(_dataRefRegion->count()-1);
+            // set the default target region to the first region after the bin info
+            int iColumnFirstRegion = qMin(_dataColumnNames.count()-1,qMax(iColumnBinSize,iColumnBinTime)+1);
+            qDebug() << "iColumns" << iColumnBinSize << iColumnBinTime << iColumnFirstRegion;
+            _dataTargetRegion->setCurrentIndex(iColumnFirstRegion);
             enablePlasmaMatching(true);
             _ROIFileName->setToolTip(fileName);
             _ROIFileName->setText(utilString::getFileNameWithoutDirectory(fileName));
@@ -132,6 +164,59 @@ void SimWindow::getTableDataFile()
             updateAllGraphs();
         }
     }
+}
+
+bool SimWindow::defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn)
+{
+    // Find bin sizes
+    iColumn = -1;
+    for (int jName=0; jName<validBinName.count(); jName++)
+    {
+        iColumn = _dataColumnNames.indexOf(QRegExp(validBinName[jName], Qt::CaseInsensitive));
+        if ( iColumn >= 0 ) break;
+    }
+    if ( iColumn < 0 )
+        return false;
+    // Convert selected column to time bins
+    _dtBins.clear();  _timeBins.clear();
+    double time=_dataTable[iColumn][0]/60./2.;  // center of 1st bin in min
+    for ( int jt=0; jt<_dataTable[iColumn].size(); jt++)
+    {
+        _dtBins.append(_dataTable[iColumn][jt]/60.); // seconds to minutes
+        _timeBins.append(time);
+        time += _dtBins.last();
+    }
+    qDebug() << "SimWindow::defineTimeBinsFromBinSize iColumn" << iColumn << _dataColumnNames.at(iColumn);
+    return true;
+}
+
+bool SimWindow::defineTimeBinsFromTimePoints(QStringList validBinName, int &iColumn)
+{
+    // Find bin sizes
+    iColumn = -1;
+    for (int jName=0; jName<validBinName.count(); jName++)
+    {
+        iColumn = _dataColumnNames.indexOf(QRegExp(validBinName[jName], Qt::CaseInsensitive));
+        if ( iColumn >= 0 ) break;
+    }
+    if ( iColumn < 0 )
+        return false;
+    // Convert selected column to time bins
+    _dtBins.clear();  _timeBins.clear();
+    for ( int jt=0; jt<_dataTable[iColumn].size(); jt++)
+    {
+        double time = _dataTable[iColumn][jt];
+        _timeBins.append(time);
+        if ( jt == 0 )
+            _dtBins.append(2.*time); // seconds to minutes
+        else
+        {
+            double lowerEdge = _dataTable[iColumn][jt-1] + _dtBins.last()/2.;
+            _dtBins.append(2.*(time-lowerEdge));
+        }
+    }
+    qDebug() << "SimWindow::defineTimeBinsFromTimePoints iColumn" << iColumn << _dataColumnNames.at(iColumn);
+    return true;
 }
 
 void SimWindow::enablePlasmaMatching(bool state)
@@ -305,8 +390,8 @@ void SimWindow::createSetupPage()
     QIcon openIcon(pixmapOpenAlignment);
     _readROIFile = new QPushButton(openIcon,"open",_setupPage);
     _ROIFileName = new QLabel("No real data",_setupPage);
-    auto *realDataGroupBox = new QGroupBox("Real data (as comparison or for analysis)");
-    QLabel *dataLabel = new QLabel("Real data");
+    auto *realDataGroupBox = new QGroupBox("Real data (imported ROIs from table)");
+    QLabel *dataLabel = new QLabel("Ref Region ROI");
     _dataRefRegion = new QComboBox();
     auto *realDataLayout = new QGridLayout();
     realDataLayout->addWidget(_readROIFile,0,0);
@@ -398,7 +483,7 @@ void SimWindow::createSetupPage()
     connect(_noiseRef, SIGNAL(editingFinished()), this, SLOT(changedNoiseRef()));
 
     connect(_readROIFile, SIGNAL(pressed()), this, SLOT(getTableDataFile()));
-    connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataRefRegion(int)));
+    connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(updateAllGraphs()));
 
     _setupPage->setLayout(fullLayout);
 }
@@ -422,11 +507,6 @@ void SimWindow::calculateRRMatch()
     includeParameter.append(_slowTauCheckBox->checkState());
     includeParameter.append(_fastFractionCheckBox->checkState());
 //    _simulator.calculateRRMatch(includeParamter, )
-}
-
-void SimWindow::changedDataRefRegion(int indexInBox)
-{
-    updateAllGraphs();
 }
 
 void SimWindow::changedWeightType(int indexInBox)
@@ -510,7 +590,7 @@ void SimWindow::createTargetPage()
     int editTextSize=80;
 
     // target region: input
-    auto *targetGroupBox = new QGroupBox("Target Region: truth");
+    _targetSimulationGroupBox = new QGroupBox("Target Simulation: truth");
     QLabel *BPndLabel    = new QLabel("BPnd");
     QLabel *R1Label      = new QLabel("R1");
     QLabel *tau4Label    = new QLabel("1/k4 (min)");
@@ -540,23 +620,23 @@ void SimWindow::createTargetPage()
     _challengeMag->setFixedWidth(editTextSize);
     _noiseTar->setFixedWidth(editTextSize);
     _plasmaFracTar->setFixedWidth(editTextSize);
-    auto *targetLayout = new QGridLayout();
-    targetLayout->addWidget(BPndLabel,0,0);
-    targetLayout->addWidget(_BPnd,0,1);
-    targetLayout->addWidget(R1Label,1,0);
-    targetLayout->addWidget(_R1,1,1);
-    targetLayout->addWidget(tau4Label,2,0);
-    targetLayout->addWidget(_tau4,2,1);
-    targetLayout->addWidget(challengeTimeLabel,3,0);
-    targetLayout->addWidget(_challengeTime,3,1);
-    targetLayout->addWidget(challengeMagLabel,4,0);
-    targetLayout->addWidget(_challengeMag,4,1);
-    targetLayout->addWidget(plasmaFraclabel,5,0);
-    targetLayout->addWidget(_plasmaFracTar,5,1);
-    targetLayout->addWidget(noiseLabel,6,0);
-    targetLayout->addWidget(_noiseTar,6,1);
-    targetGroupBox->setLayout(targetLayout);
-    targetLayout->setSpacing(0);
+    auto *targetSimulationLayout = new QGridLayout();
+    targetSimulationLayout->addWidget(BPndLabel,0,0);
+    targetSimulationLayout->addWidget(_BPnd,0,1);
+    targetSimulationLayout->addWidget(R1Label,1,0);
+    targetSimulationLayout->addWidget(_R1,1,1);
+    targetSimulationLayout->addWidget(tau4Label,2,0);
+    targetSimulationLayout->addWidget(_tau4,2,1);
+    targetSimulationLayout->addWidget(challengeTimeLabel,3,0);
+    targetSimulationLayout->addWidget(_challengeTime,3,1);
+    targetSimulationLayout->addWidget(challengeMagLabel,4,0);
+    targetSimulationLayout->addWidget(_challengeMag,4,1);
+    targetSimulationLayout->addWidget(plasmaFraclabel,5,0);
+    targetSimulationLayout->addWidget(_plasmaFracTar,5,1);
+    targetSimulationLayout->addWidget(noiseLabel,6,0);
+    targetSimulationLayout->addWidget(_noiseTar,6,1);
+    _targetSimulationGroupBox->setLayout(targetSimulationLayout);
+    targetSimulationLayout->setSpacing(0);
     connect(_BPnd,          SIGNAL(editingFinished()), this, SLOT(changedBPND()));
     connect(_R1,            SIGNAL(editingFinished()), this, SLOT(changedR1()));
     connect(_tau4,          SIGNAL(editingFinished()), this, SLOT(changedTau4()));
@@ -564,6 +644,17 @@ void SimWindow::createTargetPage()
     connect(_challengeMag,  SIGNAL(editingFinished()), this, SLOT(changedChallengeMag()));
     connect(_plasmaFracTar, SIGNAL(editingFinished()), this, SLOT(changedPlasmaFracTar()));
     connect(_noiseTar,      SIGNAL(editingFinished()), this, SLOT(changedNoiseTar()));
+
+    _targetDataGroupBox = new QGroupBox("Target ROI from imported table");
+    auto *targetDataLayout = new QGridLayout();
+    auto *targetROILabel = new QLabel("ROI");
+    _dataTargetRegion = new QComboBox();
+    targetDataLayout->addWidget(targetROILabel,0,0);
+    targetDataLayout->addWidget(_dataTargetRegion,0,1);
+    targetDataLayout->setSpacing(0);
+    _targetDataGroupBox->setLayout(targetDataLayout);
+    _targetDataGroupBox->setVisible(false);
+    connect(_dataTargetRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(updateAllGraphs()));
 
     // target region: analysis
     auto *analysisGroupBox = new QGroupBox("Target Region: analysis");
@@ -679,7 +770,8 @@ void SimWindow::createTargetPage()
     errorLayout->setSpacing(0);
 
     auto *rightLayout = new QVBoxLayout();
-    rightLayout->addWidget(targetGroupBox);
+    rightLayout->addWidget(_targetSimulationGroupBox);
+    rightLayout->addWidget(_targetDataGroupBox);
     rightLayout->addWidget(analysisGroupBox);
     rightLayout->addWidget(errorGroupBox);
     rightLayout->setSpacing(0);
@@ -1125,14 +1217,16 @@ void SimWindow::updateReferenceGraph()
 
 void SimWindow::addSimulationCurveRR()
 {
-    _RRPlot->addCurve(0,"RR");
+    if ( realDataAvailable() )
+        _RRPlot->addCurve(0,"RR: simulation");
+    else
+        _RRPlot->addCurve(0,"RR");
     _RRPlot->setColor(Qt::red);
     _RRPlot->setPointSize(5);
     int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
     dVector yTAC;    yTAC.resize(nTime);
     dMatrix refRegion;  refRegion.resize(1);  refRegion[0].resize(nTime);
-    dMatrix timeBins;   timeBins.resize(1);   timeBins[0].resize(nTime);
     for (int jt=0; jt<nTime; jt++)
     {
         xTime[jt] = _simulator.getTimeCoarse(jt);
@@ -1147,23 +1241,86 @@ void SimWindow::addDataCurveRR()
     if ( realDataAvailable() )
     {
         int indexInBox = _dataRefRegion->currentIndex();
-        int indexData  = indexInBox + 1;  // data index 0 is time
-        if ( indexData >= _dataTable.size() )
+        if ( indexInBox >= _dataTable.size() )
             qFatal("Fatal Error: the combo-box index exceeds the table index.");
-        _RRPlot->addCurve(0,"real data");
+        _RRPlot->addCurve(0,"RR: ROI data");
         _RRPlot->setColor(Qt::gray);
         _RRPlot->setPointSize(5);
-        _RRPlot->setData(_timeBins,_dataTable[indexData]);
+        _RRPlot->setData(_timeBins,_dataTable[indexInBox]);
         qDebug() << "SimWindow::addDataCurveRR bins" << _timeBins;
-//        qDebug() << "SimWindow::addDataCurveRR RR" << _dataTable[indexData];
+//        qDebug() << "SimWindow::addDataCurveRR RR" << _dataTable[indexInBox];
         // enable buttons
         _analyzeSimulation->setEnabled(true);
         _analyzeRealData->setEnabled(true);
+        _targetDataGroupBox->setVisible(true);
     }
     else
     {
         _analyzeSimulation->setEnabled(false);
         _analyzeRealData->setEnabled(false);
+        _targetDataGroupBox->setVisible(false);
+    }
+}
+void SimWindow::addSimulationCurveTarget()
+{
+    if ( realDataAvailable() )
+        _targetPlot->addCurve(0,"target: simulation");
+    else
+        _targetPlot->addCurve(0,"target");
+    _targetPlot->setColor(Qt::red);
+    _targetPlot->setPointSize(5);
+    int nTime = _simulator.getNumberTimeBinsCoarse();
+    dVector xTime;   xTime.resize(nTime);
+    dVector yTAC;    yTAC.resize(nTime);
+    dMatrix tissueVector;  tissueVector.resize(1);  tissueVector[0].resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+    {
+        xTime[jt] = _simulator.getTimeCoarse(jt);
+        yTAC[jt]  = tissueVector[0][jt] = _simulator.getCtDown(jt);
+    }
+    _PETRTM.setTissueVector(tissueVector);
+    qDebug() << "SimWindow::addSimulationCurveRR bins" << xTime;
+//    qDebug() << "SimWindow::addSimulationCurveRR RR"   << yTAC;
+    _targetPlot->setData(xTime,yTAC);
+
+    dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
+    defineRTMModel();
+    // update the RTM model
+    _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
+    _PETRTM.prepare();
+    _PETRTM.fitData(tissueVector,fitVector);
+
+}
+void SimWindow::addDataCurveTarget()
+{
+    if ( realDataAvailable() )
+    {
+        qDebug() << "SimWindow::addDataCurveTarget 1";
+        _targetPlot->addCurve(0,"target: ROI data");
+        _targetPlot->setColor(Qt::gray);
+        _targetPlot->setPointSize(5);
+        qDebug() << "SimWindow::addDataCurveTarget 2";
+        int indexInBox = _dataTargetRegion->currentIndex();
+        if ( indexInBox >= _dataTable.size() )
+            qFatal("Fatal Error: the combo-box index exceeds the table index.");
+        else if ( indexInBox < 0 ) return;
+        qDebug() << "SimWindow::addDataCurveTarget 3";
+        qDebug() << "SimWindow::addDataCurveTarget 3.1" << _timeBins;
+        qDebug() << "SimWindow::addDataCurveTarget 3.2" << indexInBox;
+        qDebug() << "SimWindow::addDataCurveTarget 3.3" << _dataTable[indexInBox];
+        _targetPlot->setData(_timeBins,_dataTable[indexInBox]);
+        qDebug() << "SimWindow::addDataCurveTarget 3.5";
+        dMatrix tissueVector; tissueVector.resize(1); tissueVector[0] = _dataTable[indexInBox];
+        qDebug() << "SimWindow::addDataCurveTarget 4";
+        _PETRTM.setTissueVector(tissueVector);
+        // enable buttons
+        int nTime = _dataTable[0].size();
+        dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
+        defineRTMModel();
+        // update the RTM model
+        _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
+        _PETRTM.prepare();
+        _PETRTM.fitData(tissueVector,fitVector);
     }
 }
 
@@ -1176,38 +1333,32 @@ void SimWindow::updateTargetGraph()
     // update the plot
     _targetPlot->init();
     _targetPlot->setLegendOn(true);
-    _targetPlot->addCurve(0,"target");
-    int nTime = _simulator.getNumberTimeBinsCoarse();
-    dVector xTime;   xTime.resize(nTime);
-    dVector yTAC;    yTAC.resize(nTime);
-    dMatrix tissueVector;  tissueVector.resize(1);  tissueVector[0].resize(nTime);
-    dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
-    {
-        xTime[jt] = _simulator.getTimeCoarse(jt);
-        yTAC[jt]  = tissueVector[0][jt] = _simulator.getCtDown(jt);
-    }
-    _targetPlot->setData(xTime,yTAC);
 
-    qDebug() << "SimWindow::updateTargetGraph 1";
-    defineRTMModel();
-    // update the RTM model
-    qDebug() << "SimWindow::updateTargetGraph 2";
-    _PETRTM.setTissueVector(tissueVector);
-    qDebug() << "SimWindow::updateTargetGraph 3";
-    _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
-//    _PETRTM.setIgnoredPoints(0,true,"20-n");  // xxx jbm
-    qDebug() << "SimWindow::updateTargetGraph 4";
-    _PETRTM.prepare();
-    qDebug() << "SimWindow::updateTargetGraph 5";
-    _PETRTM.fitData(tissueVector,fitVector);
-    qDebug() << "SimWindow::updateTargetGraph 6";
+    if ( realDataAvailable() )
+    {
+        qDebug() << "real data available";
+        addDataCurveTarget();
+        addSimulationCurveTarget();
+    }
+    else
+    {
+        qDebug() << "read data not available";
+        addSimulationCurveTarget();
+        addDataCurveTarget();
+    }
 
     analyzeSimulatedTAC();
 
+    int nTime = _simulator.getNumberTimeBinsCoarse();
+    dVector xTime;   xTime.resize(nTime);
+    dVector yTAC;    yTAC.resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+        xTime[jt] = _simulator.getTimeCoarse(jt);
+
     // add fit
     _targetPlot->addCurve(0,"fit");
-    _targetPlot->setColor(Qt::red);
+    _targetPlot->setLineThickness(2);
+    _targetPlot->setColor(Qt::blue);
     for (int jt=0; jt<nTime; jt++)
         yTAC[jt] = _PETRTM.getFit(jt);
     _targetPlot->setData(xTime,yTAC);
@@ -1494,10 +1645,19 @@ double SimWindow::getChallengeMagFromAnalysis()
 }
 QString SimWindow::analyzeString(double truth, double guess)
 {
-    QString percentString, valueString;
-    percentString.setNum(percentageError(guess,truth),'g',2);
-    valueString.setNum(guess,'g',3);
-    return percentString + " % " + QString("(abs = %1)").arg(valueString);
+    if ( analyzeRealData() )
+    {
+        QString valueString;
+        valueString.setNum(guess,'g',3);
+        return QString("%1").arg(valueString);
+    }
+    else
+    {
+        QString percentString, valueString;
+        percentString.setNum(percentageError(guess,truth),'g',2);
+        valueString.setNum(guess,'g',3);
+        return percentString + " % " + QString("(abs = %1)").arg(valueString);
+    }
 }
 
 ///////////////////////////////////////
@@ -1865,57 +2025,6 @@ void SimWindow::changedCheckBoxChallenge(bool state)
     }
     _PETRTM.setPrepared(false);
     updateAllGraphs();
-}
-
-QString SimWindow::readTableFile(QString fileName, QStringList &columnNames, dMatrix &table)
-{
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        QString errorString = "Error attempting to open file " + fileName;
-        return errorString;
-    }
-    QTextStream in_stream(&file);
-    QString line = in_stream.readLine();
-    QString unCommented = line.left(line.indexOf("#"));
-    QRegExp rx("[,\\s]");// match a comma or a space
-    columnNames = unCommented.split(rx, QString::SkipEmptyParts);
-    int nColumns = columnNames.size();
-    table.resize(nColumns);
-
-    int iTime = 0;
-    while ( !in_stream.atEnd() )
-    {
-        QString line = in_stream.readLine();
-        QString unCommented = line.left(line.indexOf("#"));
-        if ( !unCommented.isEmpty() )
-        {
-            QStringList valueList = unCommented.split(QRegExp("[,\\s]"), QString::SkipEmptyParts);
-            if ( valueList.size() != 0 )
-            {
-                if ( valueList.size() < nColumns )
-                {
-                    QString errorString = QString("Error: # columns = %1 but expected # = %2 on line %3.").
-                            arg(valueList.size()).arg(nColumns).arg(iTime);
-                    return errorString;
-                }
-                else
-                {
-                    for ( int jColumn=0; jColumn<nColumns; jColumn++)
-                    {
-                        QString valueString = valueList.at(jColumn);
-                        bool ok;
-                        double value = valueString.toDouble(&ok);
-                        if ( ok )
-                            table[jColumn].append(value);
-                    } // jColumn
-                } // < nColumns
-            } // valueSize != 0
-        } // !empty
-        iTime++;
-    } // new line
-    file.close();
-    return "";
 }
 
 void SimWindow::changedBPndLow()

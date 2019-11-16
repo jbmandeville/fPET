@@ -120,18 +120,23 @@ namespace utilIO
         }
     }
 
-    int readTableFile(int iRun, QString fileName, QStringList &columnNames, dMatrix3 &table, QStringList &warningErrors)
-    {
+    QString readTimeTableFile(QString fileName, QStringList &columnNames, dMatrix &table)
+    {   // Read PREVIOUSLY ALLOCATED table[time][column]
+        // The time length will not change; the column length may change
         QFile file(fileName);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-            return(1);
+        {
+            QString errorString = "Error attempting to open file " + fileName;
+            return errorString;
+        }
         QTextStream in_stream(&file);
         QString line = in_stream.readLine();
         QString unCommented = line.left(line.indexOf("#"));
         QRegExp rx("[,\\s]");// match a comma or a space
         columnNames = unCommented.split(rx, QString::SkipEmptyParts);
         int nColumns = columnNames.size();
-        int nTimePerRun = table[iRun].size();
+        for (int jt=0; jt<table.size(); jt++)
+            table[jt].clear();
 
         int iTime = 0;
         while ( !in_stream.atEnd() )
@@ -145,11 +150,11 @@ namespace utilIO
                 {
                     if ( valueList.size() < nColumns )
                     {
-                        warningErrors.append(QString("Error: # columns = %1 but expected # = %2 on line %3.").
-                                             arg(valueList.size()).arg(nColumns).arg(iTime));
-                        return(1);
+                        QString errorString = QString("Error: # columns = %1 but expected # = %2 on line %3.").
+                                arg(valueList.size()).arg(nColumns).arg(iTime);
+                        return errorString;
                     }
-                    else if ( iTime < nTimePerRun )
+                    else
                     {
                         for ( int jColumn=0; jColumn<nColumns; jColumn++)
                         {
@@ -157,42 +162,34 @@ namespace utilIO
                             bool ok;
                             double value = valueString.toDouble(&ok);
                             if ( ok )
-                            {
-                                if ( jColumn < table[iRun][iTime].size() )
-                                    table[iRun][iTime].replace(jColumn,value);
-                                else
-                                    table[iRun][iTime].append(value);
-                            }
+                                table[iTime].append(value);
                         } // jColumn
-                    } // iTime < nt
+                    } // < nColumns
                 } // valueSize != 0
             } // !empty
             iTime++;
         } // new line
-        int nTime = iTime;
-        if ( nTime != nTimePerRun )
-        {
-            warningErrors.append(QString("Error: points read from table file %1 = %2 but expected points = %3").
-                                 arg(fileName).arg(nTime).arg(nTimePerRun));
-            return(1);
-        }
-
         file.close();
-        return(0);
+        return "";
     }
 
-    int readTableFile(QString fileName, QStringList &columnNames, dMatrix &table, QStringList &warningErrors)
-    {
+    QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table)
+    {   // read table table[column][time]; need not be previously allocated
         QFile file(fileName);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-            return(1);
+        {
+            QString errorString = "Error attempting to open file " + fileName;
+            return errorString;
+        }
         QTextStream in_stream(&file);
         QString line = in_stream.readLine();
         QString unCommented = line.left(line.indexOf("#"));
         QRegExp rx("[,\\s]");// match a comma or a space
         columnNames = unCommented.split(rx, QString::SkipEmptyParts);
         int nColumns = columnNames.size();
-        int nTimePerRun = table.size();
+        table.resize(nColumns);
+        for (int jColumn=0; jColumn<table.size(); jColumn++)
+            table[jColumn].clear();
 
         int iTime = 0;
         while ( !in_stream.atEnd() )
@@ -206,11 +203,11 @@ namespace utilIO
                 {
                     if ( valueList.size() < nColumns )
                     {
-                        warningErrors.append(QString("Error: # columns = %1 but expected # = %2 on line %3.").
-                                             arg(valueList.size()).arg(nColumns).arg(iTime));
-                        return(1);
+                        QString errorString = QString("Error: # columns = %1 but expected # = %2 on line %3.").
+                                arg(valueList.size()).arg(nColumns).arg(iTime);
+                        return errorString;
                     }
-                    else if ( iTime < nTimePerRun )
+                    else
                     {
                         for ( int jColumn=0; jColumn<nColumns; jColumn++)
                         {
@@ -218,28 +215,15 @@ namespace utilIO
                             bool ok;
                             double value = valueString.toDouble(&ok);
                             if ( ok )
-                            {
-                                if ( jColumn < table[iTime].size() )
-                                    table[iTime].replace(jColumn,value);
-                                else
-                                    table[iTime].append(value);
-                            }
+                                table[jColumn].append(value);
                         } // jColumn
-                    } // iTime < nt
+                    } // < nColumns
                 } // valueSize != 0
             } // !empty
             iTime++;
         } // new line
-        int nTime = iTime;
-        if ( nTime != nTimePerRun )
-        {
-            warningErrors.append(QString("Error: points read from table file %1 = %2 but expected points = %3").
-                                 arg(fileName).arg(nTime).arg(nTimePerRun));
-            return(1);
-        }
-
         file.close();
-        return(0);
+        return "";
     }
 
 }

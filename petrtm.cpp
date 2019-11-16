@@ -1801,7 +1801,12 @@ int PETRTM::readTimeBinsFile(int iRun, QString fileName)
 //    if ( info.isRelative() )
 //        info.makeAbsolute();
 
-    utilIO::readTableFile(iRun, fileName, _columnNames[iRun], _table, *_warningErrors);
+    QString errorString = utilIO::readTimeTableFile(fileName, _columnNames[iRun], _table[iRun]);
+    if ( !errorString.isEmpty() )
+    {
+        _warningErrors->append(errorString);
+        return(1);
+    }
 
     int colon = _refRegionName.lastIndexOf(":");
     bool useTable = colon>0;
@@ -1810,6 +1815,7 @@ int PETRTM::readTimeBinsFile(int iRun, QString fileName)
         QString tableName = _refRegionName.left(colon);
         useTable = !tableName.compare("table",Qt::CaseInsensitive);
     }
+    qDebug() << "useTable" << useTable;
     if ( useTable )
     {
         int length = _refRegionName.length();
@@ -1835,9 +1841,14 @@ int PETRTM::readTimeBinsFile(int iRun, QString fileName)
             _referenceRegionTableColumn = iFound;
     }
 
-    _dtBins[iRun].resize(_table[iRun].size());
+    _dtBins[iRun].resize(_table[iRun].size()); // shouldn't modify time dimension (_dtBin and _table[iRun] should be matched)
     for ( int jt=0; jt<_table[iRun].size(); jt++)
-        _dtBins[iRun][jt] = _table[iRun][jt][0] / 60.; // sec to minutes
+    {
+        double dt = _table[iRun][jt][0];
+        dt /= 60.;                // seconds to minutes
+        _dtBins[iRun][jt] = dt;
+    }
+    qDebug() << "_dtBins" << _dtBins[0];
 
     if ( _smoothingScale != 0. )
         defineLOESSFitting(iRun);
