@@ -169,7 +169,7 @@ private:
     void addDataCurveTarget();
     void defineRTMModel();
 
-    void analyzeSimulatedTAC();
+    void analyzeTAC();
     QString analyzeString(double truth, double guess);
     inline double percentageError(double guess, double truth) {return 100.*(guess/truth-1.);}
     double getChallengeMagFromAnalysis();

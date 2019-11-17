@@ -1313,6 +1313,7 @@ void PETRTM::setTimeBins(int iRun, dVector timeBins)
     }
     else
         qFatal("Error: attempting to set time bins for non-existent run.");
+    setPrepared(false);
 
 }
 

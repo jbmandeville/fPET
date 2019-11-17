@@ -161,6 +161,7 @@ void SimWindow::getTableDataFile()
             _numberTimeBins->setText(text.setNum(_dtBins.size())); changedNumberBins();
             qDebug() << "SimWindow::getTableDataFile setDurationBins" << _dtBins;
             _simulator.setDurationBins(_dtBins);
+            _PETRTM.setTimeBins(0,_dtBins);
             updateAllGraphs();
         }
     }
@@ -282,7 +283,6 @@ void SimWindow::createSetupPage()
     setupGroupBox->setLayout(setupLayout);
     setupLayout->setSpacing(0);
     connect(_numberTimeBins, SIGNAL(editingFinished()), this, SLOT(changedNumberBins()));
-    connect(_binIndex, SIGNAL(valueChanged(int)), this, SLOT(changedBinIndex(int)));
     connect(_binDuration, SIGNAL(editingFinished()), this, SLOT(changedBinDuration()));
     connect(_subSample,   SIGNAL(editingFinished()), this, SLOT(changedSubSample()));
 
@@ -855,6 +855,8 @@ void SimWindow::createTargetPage()
     connect(radioShowBasisTarget, SIGNAL(clicked(bool)), this, SLOT(showBasisTarget()));
     connect(radioShowBasis,  SIGNAL(clicked(bool)), this, SLOT(showBasis()));
     connect(radioShowTarget, SIGNAL(clicked(bool)), this, SLOT(showTarget()));
+    connect(_analyzeSimulation, SIGNAL(clicked(bool)), this, SLOT(updateAllGraphs()));
+    connect(_analyzeRealData,   SIGNAL(clicked(bool)), this, SLOT(updateAllGraphs()));
 
     _targetPage->setLayout(fullLayout);
     qDebug() << "SimWindow::createTargetPage exit";
@@ -1196,15 +1198,13 @@ void SimWindow::updateReferenceGraph()
     _RRPlot->init();
     _RRPlot->setLegendOn(true);
 
-    if ( realDataAvailable() )
+    if ( analyzeRealData() )
     {
-        qDebug() << "read data not available";
         addDataCurveRR();
         addSimulationCurveRR();
     }
     else
     {
-        qDebug() << "read data available";
         addSimulationCurveRR();
         addDataCurveRR();
     }
@@ -1221,7 +1221,10 @@ void SimWindow::addSimulationCurveRR()
         _RRPlot->addCurve(0,"RR: simulation");
     else
         _RRPlot->addCurve(0,"RR");
-    _RRPlot->setColor(Qt::red);
+    if ( _RRPlot->getNumberCurves() == 1 )
+        _RRPlot->setColor(Qt::red); // 1st curve
+    else
+        _RRPlot->setColor(Qt::gray);
     _RRPlot->setPointSize(5);
     int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
@@ -1244,7 +1247,10 @@ void SimWindow::addDataCurveRR()
         if ( indexInBox >= _dataTable.size() )
             qFatal("Fatal Error: the combo-box index exceeds the table index.");
         _RRPlot->addCurve(0,"RR: ROI data");
-        _RRPlot->setColor(Qt::gray);
+        if ( _RRPlot->getNumberCurves() == 1 )
+            _RRPlot->setColor(Qt::red); // 1st curve
+        else
+            _RRPlot->setColor(Qt::gray);
         _RRPlot->setPointSize(5);
         _RRPlot->setData(_timeBins,_dataTable[indexInBox]);
         qDebug() << "SimWindow::addDataCurveRR bins" << _timeBins;
@@ -1267,60 +1273,39 @@ void SimWindow::addSimulationCurveTarget()
         _targetPlot->addCurve(0,"target: simulation");
     else
         _targetPlot->addCurve(0,"target");
-    _targetPlot->setColor(Qt::red);
+    if ( _targetPlot->getNumberCurves() == 1 )
+        _targetPlot->setColor(Qt::red); // 1st curve
+    else
+        _targetPlot->setColor(Qt::gray);
     _targetPlot->setPointSize(5);
     int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
     dVector yTAC;    yTAC.resize(nTime);
-    dMatrix tissueVector;  tissueVector.resize(1);  tissueVector[0].resize(nTime);
     for (int jt=0; jt<nTime; jt++)
     {
         xTime[jt] = _simulator.getTimeCoarse(jt);
-        yTAC[jt]  = tissueVector[0][jt] = _simulator.getCtDown(jt);
+        yTAC[jt]  = _simulator.getCtDown(jt);
     }
-    _PETRTM.setTissueVector(tissueVector);
     qDebug() << "SimWindow::addSimulationCurveRR bins" << xTime;
 //    qDebug() << "SimWindow::addSimulationCurveRR RR"   << yTAC;
     _targetPlot->setData(xTime,yTAC);
-
-    dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
-    defineRTMModel();
-    // update the RTM model
-    _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
-    _PETRTM.prepare();
-    _PETRTM.fitData(tissueVector,fitVector);
 
 }
 void SimWindow::addDataCurveTarget()
 {
     if ( realDataAvailable() )
     {
-        qDebug() << "SimWindow::addDataCurveTarget 1";
         _targetPlot->addCurve(0,"target: ROI data");
-        _targetPlot->setColor(Qt::gray);
+        if ( _targetPlot->getNumberCurves() == 1 )
+            _targetPlot->setColor(Qt::red); // 1st curve
+        else
+            _targetPlot->setColor(Qt::gray);
         _targetPlot->setPointSize(5);
-        qDebug() << "SimWindow::addDataCurveTarget 2";
-        int indexInBox = _dataTargetRegion->currentIndex();
-        if ( indexInBox >= _dataTable.size() )
+        int indexTarget = _dataTargetRegion->currentIndex();
+        if ( indexTarget >= _dataTable.size() )
             qFatal("Fatal Error: the combo-box index exceeds the table index.");
-        else if ( indexInBox < 0 ) return;
-        qDebug() << "SimWindow::addDataCurveTarget 3";
-        qDebug() << "SimWindow::addDataCurveTarget 3.1" << _timeBins;
-        qDebug() << "SimWindow::addDataCurveTarget 3.2" << indexInBox;
-        qDebug() << "SimWindow::addDataCurveTarget 3.3" << _dataTable[indexInBox];
-        _targetPlot->setData(_timeBins,_dataTable[indexInBox]);
-        qDebug() << "SimWindow::addDataCurveTarget 3.5";
-        dMatrix tissueVector; tissueVector.resize(1); tissueVector[0] = _dataTable[indexInBox];
-        qDebug() << "SimWindow::addDataCurveTarget 4";
-        _PETRTM.setTissueVector(tissueVector);
-        // enable buttons
-        int nTime = _dataTable[0].size();
-        dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
-        defineRTMModel();
-        // update the RTM model
-        _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
-        _PETRTM.prepare();
-        _PETRTM.fitData(tissueVector,fitVector);
+        else if ( indexTarget < 0 ) return;
+        _targetPlot->setData(_timeBins,_dataTable[indexTarget]);
     }
 }
 
@@ -1334,20 +1319,18 @@ void SimWindow::updateTargetGraph()
     _targetPlot->init();
     _targetPlot->setLegendOn(true);
 
-    if ( realDataAvailable() )
+    if ( analyzeRealData() )
     {
-        qDebug() << "real data available";
         addDataCurveTarget();
         addSimulationCurveTarget();
     }
     else
     {
-        qDebug() << "read data not available";
         addSimulationCurveTarget();
         addDataCurveTarget();
     }
 
-    analyzeSimulatedTAC();
+    analyzeTAC();
 
     int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
@@ -1405,29 +1388,25 @@ void SimWindow::defineRTMModel()
         // matrices: [nRuns][nTime]
         dMatrix timeBins;  timeBins.resize(1);
         dMatrix refRegion; refRegion.resize(1);
-        timeBins[0]  = _dataTable[0];         // _dataTable[nColums]
+        timeBins[0]  = _dtBins;               // _dataTable[nColums]
         refRegion[0] = _RRPlot->getYData(0);  // getYData(iCurve)
         _PETRTM.setReferenceRegion(timeBins,refRegion);
     }
     else
     {
-        qDebug() << "SimWindow::defineRTMModel 1";
         int nTime = _simulator.getNumberTimeBinsCoarse();
-        if ( firstTime || nTime != _PETRTM.getNumberTimePoints() )
-        {
-            qDebug() << "SimWindow::defineRTMModel 2";
-            dMatrix timeBins;  timeBins.resize(1);
-            timeBins[0] = _simulator.getTimeBinVector();
-            dMatrix refRegion; refRegion.resize(1);
-            refRegion[0].resize(nTime);
-            for (int jt=0; jt<nTime; jt++)
-                refRegion[0][jt] = _simulator.getCrDown(jt);
-            qDebug() << "timeBins =" << timeBins;
-            qDebug() << "refRegion =" << refRegion;
-            _PETRTM.setReferenceRegion(timeBins,refRegion);
-        }
-        qDebug() << "SimWindow::defineRTMModel 3";
-
+        dMatrix timeBins;  timeBins.resize(1);
+        timeBins[0] = _simulator.getTimeBinVector();
+        dMatrix refRegion; refRegion.resize(1);
+        refRegion[0].resize(nTime);
+        for (int jt=0; jt<nTime; jt++)
+            refRegion[0][jt] = _simulator.getCrDown(jt);
+        qDebug() << "timeBins =" << timeBins;
+        qDebug() << "refRegion =" << refRegion;
+        _PETRTM.setReferenceRegion(timeBins,refRegion);
+    }
+    if ( firstTime )
+    {
         // Assign these IDs:
         _PETRTM.setR1EventID(0,'R');
         _PETRTM.setk2EventID(0,'k');
@@ -1435,21 +1414,12 @@ void SimWindow::defineRTMModel()
         int indexChallenge = _PETRTM.getEventIndex('c');
         _PETRTM.setChallengeShape(indexChallenge,Challenge_Sigmoid);
         _PETRTM.setChallengeTau(indexChallenge,0.1);
-        qDebug() << "SimWindow::defineRTMModel 4";
-        if ( firstTime )
-        {
-            qDebug() << "SimWindow::defineRTMModel 5" << indexChallenge;
-            _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
-            qDebug() << "SimWindow::defineRTMModel 5.1";
-            _PETRTM.setTau2RefSRTM(0,_simulator.getTau2Ref());
-            qDebug() << "SimWindow::defineRTMModel 5.2";
-            _PETRTM.setTau2RefFRTM(0,_simulator.getTau2Ref());
-            qDebug() << "SimWindow::defineRTMModel 5.3";
-            _PETRTM.setTau4(0,_simulator.getTau4());
-        }
-        qDebug() << "SimWindow::defineRTMModel 6";
-        firstTime = false;
+        _PETRTM.setChallengeOnset(indexChallenge,0,_simulator.getChallengeTime());
+        _PETRTM.setTau2RefSRTM(0,_simulator.getTau2Ref());
+        _PETRTM.setTau2RefFRTM(0,_simulator.getTau2Ref());
+        _PETRTM.setTau4(0,_simulator.getTau4());
     }
+    firstTime = false;
     qDebug() << "SimWindow::defineRTMModel exit";
 }
 
@@ -1535,9 +1505,35 @@ void SimWindow::updateAllGraphs()
     updateTargetGraph();
     updateBasisGraph();  // update basis graph AFTER target graph, because basis functions use target curve
 }
-void SimWindow::analyzeSimulatedTAC()
+void SimWindow::analyzeTAC()
 {
-    qDebug() << "SimWindow::analyzeSimulatedTAC enter";
+    // define analysis
+    defineRTMModel();
+    // update the RTM model
+
+    int nTime;
+    dMatrix tissueVector; tissueVector.resize(1);
+    if ( analyzeRealData() )
+    {
+        nTime = _dataTable[0].size();
+        int indexTarget = _dataTargetRegion->currentIndex();
+        tissueVector[0] = _dataTable[indexTarget];
+    }
+    else
+    {
+        nTime = _simulator.getNumberTimeBinsCoarse();
+        tissueVector[0].resize(nTime);
+        for (int jt=0; jt<nTime; jt++)
+            tissueVector[0][jt] = _simulator.getCtDown(jt);
+    }
+    _PETRTM.setTissueVector(tissueVector);
+    _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
+    _PETRTM.prepare();
+    dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
+    _PETRTM.fitData(tissueVector,fitVector);
+
+    //
+    qDebug() << "SimWindow::analyzeTAC enter";
     // BPnd
     double truth = _simulator.getBP0();
     double guess = _PETRTM.getBP0InRun(0);
@@ -1621,10 +1617,10 @@ void SimWindow::analyzeSimulatedTAC()
 
     // sigma2
     double sigma = qSqrt(_PETRTM.getSigma2());
-    valueString.setNum(sigma,'g',1);
+    valueString.setNum(sigma,'g',3);
     _sigma->setText(valueString);
 
-    qDebug() << "SimWindow::analyzeSimulatedTAC exit";
+    qDebug() << "SimWindow::analyzeTAC exit";
 }
 double SimWindow::getChallengeMagFromAnalysis()
 {
