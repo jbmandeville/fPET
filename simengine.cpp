@@ -14,9 +14,8 @@ simEngine::simEngine()
 }
 void simEngine::initializeBins()
 {
-    qDebug() << "simEngine::initializeBins enter";
-    if ( _nBins != _durationBin.size() )
-        _durationBin.fill(1.,_nBins);  // duration in min
+    if ( _nBins != _durationBinSec.size() )
+        _durationBinSec.fill(60,_nBins);  // duration in min
     if ( _nBins != _numberSamplesPerBin.size() )
         _numberSamplesPerBin.fill(10,_nBins);
     updateFineSamples();
@@ -25,25 +24,21 @@ void simEngine::updateFineSamples()
 {
     _dtFine.clear();  _timeFine.clear(); _timeCoarse.clear();
     double time=0.;
-    qDebug() << "simEngine::updateFineSamples bins" << _durationBin;
     for (int jBin=0; jBin<_nBins; jBin++)
     {
-        double dtFine = _durationBin[jBin] / _numberSamplesPerBin[jBin];
+        double dt = static_cast<double>(_durationBinSec[jBin])/60.;
+        double dtFine = dt / _numberSamplesPerBin[jBin];
         double avTime=0.;
         for (int jSample=0; jSample<_numberSamplesPerBin[jBin]; jSample++)
         {
             _dtFine.append(dtFine);
             _timeFine.append(time + dtFine/2.);
             avTime += _timeFine.last();
-//            qDebug() << "avTime =" << avTime;
             time += dtFine;  // start of bin
         }
         avTime /= static_cast<double>(_numberSamplesPerBin[jBin]);
         _timeCoarse.append(avTime);
     }
-//    qDebug() << "dtFine" << _dtFine;
-//    qDebug() << "timeFine" << _timeFine;
-//    qDebug() << "timeCoarse" << _timeCoarse;
 }
 
 void simEngine::run()
@@ -87,11 +82,57 @@ void simEngine::generatePlasmaTAC()
     _CpBinned = downSample(_Cp);
 }
 
+void simEngine::fitReferenceRegion()
+{
+    cVector baselineID = {'1','2','3','4','5','6'};
+
+    // initialize a GLM for fitting the reference region
+    _glmRR.init(getNumberTimeBinsFine(), 0);  // set nCoeff to 0 here, so coefficients will be appended during creation
+
+    // define 6 baseline terms
+    double duration = getTimeFine(getNumberTimeBinsFine()-1);
+    for (int jPoly=0; jPoly<6; jPoly++)
+    {
+        dVector basisFine;  basisFine.fill(0.,getNumberTimeBinsFine());
+        for (int jt=0; jt<getNumberTimeBinsFine(); jt++)
+        {
+            double time = getTimeFine(jt);
+            double x = -1. + 2.*time/duration;
+            basisFine[jt] = baselineBasisFunction(jPoly, x);
+        }
+        _glmRR.addOrInsertBasisFunction(jPoly,basisFine);
+    }
+    // Now add the gamma-variate function
+}
+
+double simEngine::baselineBasisFunction(int iPoly, double x)
+{ // return Legendre polynomial of x with order iPoly, where x is symmetric in (-1.,1.); x = -1. + 2.*time/duration
+    double value;
+    if ( iPoly == 0 )
+        value = 1.;
+    else if ( iPoly == 1 )
+        value = x;
+    else if ( iPoly == 2 )
+        value = 0.5 * (3*x*x -1.);
+    else if ( iPoly == 3 )
+        value = 0.5 * (5.*x*x*x - 3.*x);
+    else if ( iPoly == 4 )
+        value = 0.125 * (35.*x*x*x*x - 30.*x*x + 3.);
+    else // if ( iPoly == 5 )
+        value = 0.125 * (63.*x*x*x*x*x - 70.*x*x*x + 15.*x);
+    return value;
+}
+double simEngine::gammaVariateFunction(double time, double onset, double alpha, double tau)
+{ // return a normalized gamma variate function of form t^alpha * exp(alpha*t)
+    double t = (time - onset) / tau;
+    return qPow(t,alpha) * exp(alpha*(1.-t));
+}
+
 void simEngine::generateReferenceTAC()
 {
     // dCr_dt = K1 * Cp - k2 * Cr;
+    // Cp = ( dCr_dt + k2 * Cr) / K1;
     int nTime = _dtFine.size();
-//    qDebug() << "nTime =" << nTime << "dtFile =" << _dtFine;
     double Cr = 0.;
     _Cr.clear();
     for ( int jt=0; jt<nTime; jt++)
@@ -105,11 +146,9 @@ void simEngine::generateReferenceTAC()
         // Cp is conc(tracer)/volume(blood), whereas Cr is conc(tracer)/volume(tissue), so multiple Cp by volume(blood)/volume(tissue)
         _Cr.append(Cr + _percentPlasmaRef/100. * Cp);
     }
-//    qDebug() << "Cr =" << _Cr;
 
     // Downsample the TAC and add Noise
     _CrBinned = downSample(_Cr);
-//    qDebug() << "CrBinnged =" << _CrBinned;
     addNoise(_noiseRef, _CrBinned);
 }
 
@@ -272,7 +311,10 @@ double simEngine::integralOf(dVector tissue, int iTime)
 {
     double integral=0;
     for ( int jt=0; jt<=iTime; jt++)
-        integral += tissue[jt] * _durationBin[jt];
+    {
+        double dt = static_cast<double>(_durationBinSec[jt])/60.;
+        integral += tissue[jt] * dt;
+    }
     return integral;
 }
 
@@ -282,7 +324,7 @@ dVector simEngine::differentiateTissueVector()
     dVector derivative;  derivative.resize(nTime);
     for (int jt=0; jt<nTime; jt++)
     {
-        double dt = _durationBin[jt];
+        double dt = static_cast<double>(_durationBinSec[jt])/60.;
         if ( jt != 0. )
             derivative[jt] = (_CtBinned[jt] - _CtBinned[jt-1]) / dt;
         else
@@ -296,7 +338,7 @@ dVector simEngine::calculateConvolution(dVector tissue)
     dVector convolution;  convolution.fill(0.,nTime);
     for (int jt=0; jt<nTime; jt++)
     {
-        double dt = _durationBin[jt];
+        double dt = static_cast<double>(_durationBinSec[jt])/60.;
         double time = dt * jt;  // probably need to shift by 1/2 bin
         for ( int jtPrime=0; jtPrime<=jt; jtPrime++ )
         { // integrate from 0 to current time in run (=iTime_run & time)
@@ -306,7 +348,7 @@ dVector simEngine::calculateConvolution(dVector tissue)
     } // jt
     return convolution;
 }
-double simEngine::getDuration()
+double simEngine::getDurationScan()
 {
     double duration=0.;
     for (int jt=0; jt<_dtFine.size(); jt++)
@@ -332,7 +374,6 @@ double simEngine::getdk2k3()
     double k2k3_0 = _k2 * _BP0;
     double k2k3_1 = _k2 * BP1;
     double dk2k3 = k2k3_0 - k2k3_1;
-    qDebug() << "compute dk2k3 truth" << _BP0 << BP1 << _k2 << k2k3_0 << k2k3_1 << dk2k3;
     return dk2k3/_k4;
     */
 }

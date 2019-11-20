@@ -66,9 +66,8 @@ private:
 
     // # of runs
     int _nRuns=0;
-    iVector _nTimePerRun;       // [_nRuns]
     // per run
-    dMatrix _weights;               // [_nRuns][_nTimePerRun]
+    dMatrix _weights;               // [_nRuns][nTimePerRun]
     // IDs must be independent across types: e.g., a k2 event in one run cannot be a k2a event in a different run
     cVector _R1EventID;             // [_nRuns]; not required for RTM2
     cVector _k2EventID;             // [_nRuns]; always required
@@ -96,19 +95,22 @@ private:
 
     // tissue vectors
     QVector<QStringList> _columnNames; // [_nRuns]
-    dMatrix3 _table;                  // [_nRuns][_nTimeInRun][nColumns]; used for creating integrals
-    dMatrix _dtBins;                  // [_nRuns][_nTimeInRun]; this should be _table column 0 converted to minutes
-    dMatrix _refRegionRaw;            // [_nRuns][_nTimeInRun]; actual ref region data
-    dMatrix _refRegion;               // [_nRuns][_nTimeInRun]; value used in analysis (either raw or fit)
-    dMatrix _refRegionIntegral;       // [_nRuns][_nTimeInRun]; integral of raw or fit
-    dMatrix _refRegionDeriv;          // [_nRuns][_nTimeInRun]
-    dMatrix _tissRegionRaw;           // [_nRuns][_nTimeInRun]
-    dMatrix _tissRegion;              // [_nRuns][_nTimeInRun]
-    dMatrix _tissRegionDeriv;         // [_nRuns][_nTimeInRun]
-    dMatrix _frtmConv_dCtdtERaw;      // [_nRuns][_nTimeInRun]; for use with modified basis functions
-    dMatrix _frtmConv_dCtdtE;         // [_nRuns][_nTimeInRun];
-    dMatrix _frtmConv_CtE;            // [_nRuns][_nTimeInRun];
-    dMatrix _frtmConvDeWeightUptake;  // [_nRuns][_nTimeInRun]; for de-weighting the uptake period (1-mag(_frtmConv_dCtdtE)/max)
+    dMatrix3 _table;                   // [_nRuns][nTimeInRun][nColumns]; used for creating integrals
+    iMatrix _dtBinsSec;                // [_nRuns][nTimeInRun]; bin width in seconds (integer!)
+    dMatrix _dtBinsSecUniform;         // [_nRuns][nTimeInRunFine]
+    iMatrix3 _binSplit;                // [_nRuns][nTimeInRun][nSplit]; last dimension points to
+
+    dMatrix _refRegionRaw;            // [_nRuns][nTimeInRun]; actual ref region data
+    dMatrix _refRegion;               // [_nRuns][nTimeInRun]; value used in analysis (either raw or fit)
+    dMatrix _refRegionIntegral;       // [_nRuns][nTimeInRun]; integral of raw or fit
+    dMatrix _refRegionDeriv;          // [_nRuns][nTimeInRun]
+    dMatrix _tissRegionRaw;           // [_nRuns][nTimeInRun]
+    dMatrix _tissRegion;              // [_nRuns][nTimeInRun]
+    dMatrix _tissRegionDeriv;         // [_nRuns][nTimeInRun]
+    dMatrix _frtmConv_dCtdtERaw;      // [_nRuns][nTimeInRun]; for use with modified basis functions
+    dMatrix _frtmConv_dCtdtE;         // [_nRuns][nTimeInRun];
+    dMatrix _frtmConv_CtE;            // [_nRuns][nTimeInRun];
+    dMatrix _frtmConvDeWeightUptake;  // [_nRuns][nTimeInRun]; for de-weighting the uptake period (1-mag(_frtmConv_dCtdtE)/max)
 
     // iterative methods: save BPnd immediately after fitting so one can switch between models without affecting BPnd extraction
     dVector _BPndForIterations;       // [_nRuns]; use this for 1) SRTM2Fit (iterative BPnd),
@@ -133,11 +135,10 @@ private:
     dVector _ySEMForChallAv; // [nPre + nPost + 1]
     dVector _yFitForChallAv; // [nPre + nPost + 1]
 
-    QVector<QVector<PolynomialGLM>> _quadLOESS;  // [_nRuns][_nTimePerRun]
+    QVector<QVector<PolynomialGLM>> _quadLOESS;  // [_nRuns][nTimePerRun]
 
     void createEventBasisFunction(QChar eventID, dVector &basis);
     static double referenceRegionFitFunction(double time, double *p);
-    void smoothRunData(dMatrix &runData);
     void fitLoessCurve(dMatrix &runData);
     double Gauss(double x, double fwhm);
     void updateReferenceRegion();
@@ -161,9 +162,10 @@ private:
     void createChallengeBasisFunction(int iCoeff, dVector &basis);
     void createChallengeShape(int iRun, int indexChallenge, dVector &shape);
 
-
     int readGLMFileOldFormat(int iRun, QString fileName);
     int readGLMFileNewFormat(int iRun, QString fileName);
+
+    void defineFrameInterpolation(int iRun);
 
 public:
     QString _refRegionName;
@@ -221,9 +223,9 @@ public:
     void setChallengeOffset(int indexChallenge, int indexStimulus, double time);
     void setChallengeTau(int indexChallenge, double tau);
     void setChallengeAlpha(int indexChallenge, double alpha);
-    void setTimeBins(int iRun, dVector timeBins);
+    void setTimeBinsSec(int iRun, iVector timeBinsSec);
     void setReferenceRegion(dMatrix referenceRegionRaw);
-    void setReferenceRegion(dMatrix timeBins, dMatrix referenceRegionRaw);
+    void setReferenceRegion(iMatrix timeBinsSec, dMatrix referenceRegionRaw);
     void setReferenceRegionFromTableColumn(int iColumn);
     void setTissueVector(dMatrix tissueRegion);
     void setRTMModelType(RTMModelTypes model);
@@ -263,7 +265,7 @@ public:
     double interpolateVector(dVector inputVector, double rBin);
     inline int getNumberRuns() {return _nRuns;}
     inline int getNumberEvents() {return _basisID.size();}
-    inline int getNumberTimePointsInRun(int iRun) {return _nTimePerRun[iRun];}
+    inline int getNumberTimePointsInRun(int iRun) {return _dtBinsSec[iRun].size();}
     inline int getChallengeRun(int indexChallenge, int indexStimulus) {return _challengeRun[indexChallenge][indexStimulus];}
     inline double getChallengeOnset(int indexChallenge, int indexStimulus) {return _challengeOn[indexChallenge][indexStimulus];}
     inline double getChallengeOffset(int indexChallenge, int indexStimulus) {return _challengeOff[indexChallenge][indexStimulus];}

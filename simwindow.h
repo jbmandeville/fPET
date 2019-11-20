@@ -18,7 +18,7 @@ private:
     // Import real data as ROIs from a table file
     QStringList _dataColumnNames; // column names
     dMatrix _dataTable;           // data table [time][columns]
-    dVector _dtBins;              // dt steps in time bins
+    iVector _dtBinsSec;           // dt steps in time bins in seconds
     dVector _timeBins;            // time for bins (center of bin)
 
     double _BPndLowValue  = 1.0;
@@ -67,6 +67,7 @@ private:
     QLineEdit *_binDuration;
     QLineEdit *_timeStep;
     QLineEdit *_subSample;
+    QCheckBox *_applyToAllBinDuration;
     // bolus in/out
     QLineEdit *_bolusMag;
     QLineEdit *_tauDecay;
@@ -191,9 +192,13 @@ private slots:
     void showBasisTarget();
     void showBasis();
     void showTarget();
+    inline void changedDataReferenceRegion() {updateAllGraphs();}
+    inline void changedDataTargetRegion()    {updateAllGraphs();}
 
     void changedNumberBins();
+    void changedBinIndex(int indexPlusOne);
     void changedBinDuration();
+    void changedApplyToAllBinDuration(bool state);
     void changedSubSample();
     void changedBolusMag();
     void changedTauBolus();

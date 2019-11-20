@@ -4,7 +4,7 @@
 #include <QDebug>
 
 #include "io.h"
-
+#include "generalglm.h"
 
 class simEngine
 {
@@ -12,7 +12,7 @@ private:
     // Input quantities ///////////////////////
     // Setup bins
     int _nBins = 90;
-    dVector _durationBin;     // [_nBins]; seconds
+    iVector _durationBinSec;     // [_nBins]; seconds
     iVector _numberSamplesPerBin;  // [_nBins]
     dVector _dtFine;          // [sum of _numberSamplesPerBin = # of fine bins]
     dVector _timeFine;        // [sum of _numberSamplesPerBin = # of fine bins]
@@ -38,6 +38,7 @@ private:
     double _challengeTime=40.;
     double _deltaBPPercent=0.;  // deltaBPnd in %
     bool _SRTM = false;  // true if 1/k4 is set to zero (k4 = infinity)
+    GeneralGLM _glmRR;
 
     // derived quantities //////////////////////////
     double _K1;    // K1 = R1 * K1_ref
@@ -68,6 +69,10 @@ private:
     double integralOf(dVector tissue, int iTime);
     dVector differentiateTissueVector();
     dVector calculateConvolution(dVector tissue);
+
+    void fitReferenceRegion();
+    double baselineBasisFunction(int iPoly, double x);
+    double gammaVariateFunction(double time, double onset, double alpha, double tau);
 
 public:
     simEngine();
@@ -110,9 +115,9 @@ public:
     inline void setChallengeMag(double value) {_deltaBPPercent = value;}
     inline void setPlasmaPercentRef(double value){_percentPlasmaRef = value;}
     inline void setPlasmaPercentTar(double value){_percentPlasmaTar = value;}
-    inline void setSamplesPerBin(int lBin, int nSamples)  {_numberSamplesPerBin[lBin] = nSamples;  qDebug() << "call1"; updateFineSamples();}
-    inline void setDurationBin(int lBin, double duration) {_durationBin[lBin] = duration;          qDebug() << "call2"; updateFineSamples();}
-    inline void setDurationBins(dVector durationVector)   {_durationBin = durationVector;          qDebug() << "call3"; updateFineSamples();}
+    inline void setSamplesPerBin(int lBin, int nSamples)  {_numberSamplesPerBin[lBin] = nSamples; updateFineSamples();}
+    inline void setDurationBin(int lBin, int duration) {_durationBinSec[lBin] = duration;         updateFineSamples();}
+    inline void setDurationBins(iVector durationVector)   {_durationBinSec = durationVector;         updateFineSamples();}
 
     // getters
     inline int getNumberTimeBinsFine()   {return _dtFine.size();}
@@ -141,11 +146,12 @@ public:
     inline double getk2a()          {return _k2/(1.+_BP0);}
     inline double getk2k3()         {return _k2 * _k3;}  // or k2 * k4 * BPnd
     inline int getSamplesPerBin(int lBin) {return _numberSamplesPerBin[lBin];}
-    inline double getDurationPerBin(int lBin) {return _durationBin[lBin];}
-    inline dVector getTimeBinVector()    {return _durationBin;}
+    inline double getDurationPerBin(int lBin) {return static_cast<double>(_durationBinSec[lBin])*60.;}
+    inline double getDurationPerBinSec(int lBin) {return _durationBinSec[lBin];}
+    inline iVector getTimeBinVectorSec()    {return _durationBinSec;}
     inline double getTimeFine(int iTime) {return _timeFine[iTime];}
     inline double getTimeCoarse(int iTime) {return _timeCoarse[iTime];}
-    double getDuration();
+    double getDurationScan();
     double getdk2a();
     double getdk2k3();
 

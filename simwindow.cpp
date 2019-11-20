@@ -9,7 +9,6 @@
 
 SimWindow::SimWindow()
 {
-    qDebug() << "SimWindow::SimWindow enter";
     _threadsComboBox = new QComboBox();
     int maxThreads = QThread::idealThreadCount();
     for (int jThread=0; jThread<maxThreads; jThread++)
@@ -65,11 +64,9 @@ SimWindow::SimWindow()
     defaultWindowSize.setHeight(rec.height()*2/3);
     resize(defaultWindowSize);
 
-    qDebug() << "SimWindow::SimWindow updateAllGraphs";
     setThreadVisibility(false);
     updateAllGraphs();
 
-    qDebug() << "SimWindow::SimWindow exit";
 }
 
 void SimWindow::setThreadVisibility(bool state)
@@ -94,16 +91,7 @@ void SimWindow::getTableDataFile()
         return;
     else
     {
-        qDebug() << "readTableFile";
         QString errorString = utilIO::readTableFile(fileName, _dataColumnNames, _dataTable);
-        qDebug() << "_dataColumnNames" << _dataColumnNames;
-        qDebug() << "_dataTable size" << _dataTable.size();
-        qDebug() << "_dataTable column0" << _dataTable[0];
-        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("put"), Qt::CaseInsensitive);
-        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("putamen", Qt::CaseInsensitive));
-        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("put*", Qt::CaseInsensitive));
-        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("put*", Qt::CaseInsensitive, QRegExp::Wildcard));
-        qDebug() << "index put" << _dataColumnNames.indexOf(QRegExp("*put", Qt::CaseInsensitive, QRegExp::Wildcard));
         if ( !errorString.isEmpty() )
         {
             QMessageBox msgBox;
@@ -113,7 +101,6 @@ void SimWindow::getTableDataFile()
         }
         else
         {
-            qDebug() << "getTableDataFile 1";
             QStringList validBinSizeName = {"dt","deltaTime","delta-time","delta_time",
                                             "binSize","bin-size","bin_size",
                                             "binTime","bin-time","bin_time",
@@ -124,11 +111,8 @@ void SimWindow::getTableDataFile()
             int iColumnBinSize=-1;  int iColumnBinTime=-1;
             if ( !defineTimeBinsFromBinSize(validBinSizeName, iColumnBinSize) )
             {
-                qDebug() << "getTableDataFile 2";
                 if ( !defineTimeBinsFromTimePoints(validBinTimeName, iColumnBinTime) )
                 {
-                    qDebug() << "getTableDataFile 3";
-                    qDebug() << "getTableDataFile 4";
                     QString binList = validBinSizeName.join(", ");
                     QString binTime = validBinTimeName.join(", ");
                     QMessageBox msgBox;
@@ -151,24 +135,25 @@ void SimWindow::getTableDataFile()
             _dataRefRegion->setCurrentIndex(_dataRefRegion->count()-1);
             // set the default target region to the first region after the bin info
             int iColumnFirstRegion = qMin(_dataColumnNames.count()-1,qMax(iColumnBinSize,iColumnBinTime)+1);
-            qDebug() << "iColumns" << iColumnBinSize << iColumnBinTime << iColumnFirstRegion;
             _dataTargetRegion->setCurrentIndex(iColumnFirstRegion);
             enablePlasmaMatching(true);
             _ROIFileName->setToolTip(fileName);
             _ROIFileName->setText(utilString::getFileNameWithoutDirectory(fileName));
             // Resample the simulation to match the binning of the real data
             QString text;
-            _numberTimeBins->setText(text.setNum(_dtBins.size())); changedNumberBins();
-            qDebug() << "SimWindow::getTableDataFile setDurationBins" << _dtBins;
-            _simulator.setDurationBins(_dtBins);
-            _PETRTM.setTimeBins(0,_dtBins);
+            _numberTimeBins->setText(text.setNum(_dtBinsSec.size())); changedNumberBins();
+            _simulator.setDurationBins(_dtBinsSec);
+            _PETRTM.setTimeBinsSec(0,_dtBinsSec);
+            // update the bin duration
+            int iBin = _binIndex->value() - 1;
+            _binDuration->setText(text.setNum(_simulator.getDurationPerBinSec(iBin)));
             updateAllGraphs();
         }
     }
 }
 
 bool SimWindow::defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn)
-{
+{ // read time bin sizes
     // Find bin sizes
     iColumn = -1;
     for (int jName=0; jName<validBinName.count(); jName++)
@@ -179,20 +164,21 @@ bool SimWindow::defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn
     if ( iColumn < 0 )
         return false;
     // Convert selected column to time bins
-    _dtBins.clear();  _timeBins.clear();
-    double time=_dataTable[iColumn][0]/60./2.;  // center of 1st bin in min
+    _dtBinsSec.clear();  _timeBins.clear();
+    double dt = _dataTable[iColumn][0]; // bin width in seconds
+    double time = dt/60./2.;  // center of 1st bin in min
     for ( int jt=0; jt<_dataTable[iColumn].size(); jt++)
     {
-        _dtBins.append(_dataTable[iColumn][jt]/60.); // seconds to minutes
+        dt = _dataTable[iColumn][jt]; // input data is seconds
+        _dtBinsSec.append(static_cast<int>(dt));
         _timeBins.append(time);
-        time += _dtBins.last();
+        time += dt * 60.;
     }
-    qDebug() << "SimWindow::defineTimeBinsFromBinSize iColumn" << iColumn << _dataColumnNames.at(iColumn);
     return true;
 }
 
 bool SimWindow::defineTimeBinsFromTimePoints(QStringList validBinName, int &iColumn)
-{
+{ // convert time (MINUTES) to dt (SECONDS)
     // Find bin sizes
     iColumn = -1;
     for (int jName=0; jName<validBinName.count(); jName++)
@@ -203,20 +189,21 @@ bool SimWindow::defineTimeBinsFromTimePoints(QStringList validBinName, int &iCol
     if ( iColumn < 0 )
         return false;
     // Convert selected column to time bins
-    _dtBins.clear();  _timeBins.clear();
+    _dtBinsSec.clear();  _timeBins.clear();
     for ( int jt=0; jt<_dataTable[iColumn].size(); jt++)
     {
-        double time = _dataTable[iColumn][jt];
-        _timeBins.append(time);
+        double time = _dataTable[iColumn][jt];  // input data is time
         if ( jt == 0 )
-            _dtBins.append(2.*time); // seconds to minutes
+            _dtBinsSec.append(static_cast<int>(2.*time*60.));
         else
         {
-            double lowerEdge = _dataTable[iColumn][jt-1] + _dtBins.last()/2.;
-            _dtBins.append(2.*(time-lowerEdge));
+            double timeSec = time * 60.;
+            double lowerEdgeSec = _timeBins.last()*60. + static_cast<double>(_dtBinsSec.last())/2.;
+            _dtBinsSec.append(static_cast<int>(2.*(timeSec-lowerEdgeSec)));
         }
+        _timeBins.append(time);
     }
-    qDebug() << "SimWindow::defineTimeBinsFromTimePoints iColumn" << iColumn << _dataColumnNames.at(iColumn);
+    qDebug() << "SimWindow::defineTimeBinsFromTimePoints exit" << _dtBinsSec;
     return true;
 }
 
@@ -268,8 +255,11 @@ void SimWindow::createSetupPage()
     _subSample->setFixedWidth(editTextSize);
     QString text;
     _numberTimeBins->setText(text.setNum(_simulator.getNumberBins()));
-    _binDuration->setText(text.setNum(_simulator.getDurationPerBin(0)*60.));
+    _binDuration->setText(text.setNum(_simulator.getDurationPerBinSec(0)));
     _subSample->setText(numberString.setNum(_simulator.getSamplesPerBin(0)));
+    _binIndex->setRange(1,_simulator.getNumberBins());
+    _applyToAllBinDuration = new QCheckBox("all");
+    _applyToAllBinDuration->setToolTip("apply this bin duration to all bins");
 
     auto *setupLayout = new QGridLayout();
     setupLayout->addWidget(numberTimeBinsLabel,0,0);
@@ -278,6 +268,7 @@ void SimWindow::createSetupPage()
     setupLayout->addWidget(_binIndex,1,1);
     setupLayout->addWidget(binDurationLabel,2,0);
     setupLayout->addWidget(_binDuration,2,1);
+    setupLayout->addWidget(_applyToAllBinDuration,2,2);
     setupLayout->addWidget(subSampleLabel,3,0);
     setupLayout->addWidget(_subSample,3,1);
     setupGroupBox->setLayout(setupLayout);
@@ -285,6 +276,8 @@ void SimWindow::createSetupPage()
     connect(_numberTimeBins, SIGNAL(editingFinished()), this, SLOT(changedNumberBins()));
     connect(_binDuration, SIGNAL(editingFinished()), this, SLOT(changedBinDuration()));
     connect(_subSample,   SIGNAL(editingFinished()), this, SLOT(changedSubSample()));
+    connect(_binIndex, SIGNAL(valueChanged(int)), this, SLOT(changedBinIndex(int)));
+    connect(_applyToAllBinDuration, SIGNAL(toggled(bool)), this, SLOT(changedApplyToAllBinDuration(bool)));
 
     // Plasma Input
     auto *plasmaInGroupBox     = new QGroupBox("plasma: adjust TAC to match ref. region");
@@ -483,7 +476,7 @@ void SimWindow::createSetupPage()
     connect(_noiseRef, SIGNAL(editingFinished()), this, SLOT(changedNoiseRef()));
 
     connect(_readROIFile, SIGNAL(pressed()), this, SLOT(getTableDataFile()));
-    connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(updateAllGraphs()));
+    connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataReferenceRegion()));
 
     _setupPage->setLayout(fullLayout);
 }
@@ -561,7 +554,6 @@ void SimWindow::changedModelType(int indexInBox)
 
 void SimWindow::createTargetPage()
 {
-    qDebug() << "SimWindow::createTargetPage enter";
     _targetPage = new QWidget();
 
     _basisPlot  = new plotData(2);
@@ -654,7 +646,7 @@ void SimWindow::createTargetPage()
     targetDataLayout->setSpacing(0);
     _targetDataGroupBox->setLayout(targetDataLayout);
     _targetDataGroupBox->setVisible(false);
-    connect(_dataTargetRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(updateAllGraphs()));
+    connect(_dataTargetRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataTargetRegion()));
 
     // target region: analysis
     auto *analysisGroupBox = new QGroupBox("Target Region: analysis");
@@ -859,12 +851,10 @@ void SimWindow::createTargetPage()
     connect(_analyzeRealData,   SIGNAL(clicked(bool)), this, SLOT(updateAllGraphs()));
 
     _targetPage->setLayout(fullLayout);
-    qDebug() << "SimWindow::createTargetPage exit";
 }
 
 void SimWindow::createSweepBPndPage()
 {
-    qDebug() << "SimWindow::createSweepBPndPage enter";
     // For RTM3:
     // 1) BPnd_err vs. BPnd
     // 2) Challenge error vs. BPnd
@@ -881,7 +871,6 @@ void SimWindow::createSweepBPndPage()
     _errChallPlot = new plotData(5);
     _tau2RefPlot  = new plotData(6);
     _errk4Plot    = new plotData(7);
-    qDebug() << "SimWindow::createSweepBPndPage 1";
     auto *plotLayout = new QVBoxLayout();
     plotLayout->addWidget(_errBPndPlot->getPlotSurface());
     plotLayout->addWidget(_errChallPlot->getPlotSurface());
@@ -889,7 +878,6 @@ void SimWindow::createSweepBPndPage()
     plotLayout->addWidget(_errk4Plot->getPlotSurface());
     QString numberString;
     int editTextSize=80;
-    qDebug() << "SimWindow::createSweepBPndPage 2";
 
     auto *BPndGroupBox    = new QGroupBox("BPnd graph range and step");
     QLabel *BPndLowLabel  = new QLabel("BPnd low");
@@ -1017,19 +1005,15 @@ void SimWindow::createSweepBPndPage()
     connect(dragXAction,     SIGNAL(triggered(bool)), _errk4Plot,    SLOT(setXZoom()));
     connect(dragYAction,     SIGNAL(triggered(bool)), _errk4Plot,    SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _errk4Plot,    SLOT(autoScale(bool)));
-    qDebug() << "SimWindow::createSweepBPndPage 3";
 
     clearBPndCurves();
-    qDebug() << "SimWindow::createSweepBPndPage 4";
     changedVersusBPndGraphs();
 
     _sweepBPndPage->setLayout(fullLayout);
-    qDebug() << "SimWindow::createSweepBPndPage exit";
 }
 
 void SimWindow::createVersusTimePage()
 {
-    qDebug() << "SimWindow::createVersusTimePage enter";
     // 1) BPnd_err vs. time
     // 2) Challenge error vs. time
 
@@ -1121,7 +1105,6 @@ void SimWindow::createVersusTimePage()
     clearTimeCurves();
 
     _sweepTimePage->setLayout(fullLayout);
-    qDebug() << "SimWindow::createTargetPage exit";
 
 }
 
@@ -1158,10 +1141,6 @@ void SimWindow::showTarget()
 
 void SimWindow::updatePlasmaGraph()
 {
-    qDebug() << "SimWindow::updatePlasmaGraph enter";
-    // run the simulation
-    _simulator.generatePlasmaTAC();
-    _simulator.generateReferenceTAC();
 
     // update the plot
     _plasmaPlot->init();
@@ -1186,13 +1165,9 @@ void SimWindow::updatePlasmaGraph()
 
     _plasmaPlot->conclude(0,true);
     _plasmaPlot->plotDataAndFit(true);
-    qDebug() << "SimWindow::updatePlasmaGraph exit";
 }
 void SimWindow::updateReferenceGraph()
 {
-    qDebug() << "SimWindow::updateReferenceGraph enter";
-    // run the simulation
-    _simulator.generateReferenceTAC();
 
     // update the plot: RR
     _RRPlot->init();
@@ -1212,7 +1187,6 @@ void SimWindow::updateReferenceGraph()
     _RRPlot->conclude(0,true);
     _RRPlot->plotDataAndFit(true);
 
-    qDebug() << "SimWindow::updateReferenceGraph exit";
 }
 
 void SimWindow::addSimulationCurveRR()
@@ -1235,8 +1209,6 @@ void SimWindow::addSimulationCurveRR()
         xTime[jt] = _simulator.getTimeCoarse(jt);
         yTAC[jt]  = refRegion[0][jt] = _simulator.getCrDown(jt);
     }
-    qDebug() << "SimWindow::addSimulationCurveRR bins" << xTime;
-//    qDebug() << "SimWindow::addSimulationCurveRR RR"   << yTAC;
     _RRPlot->setData(xTime,yTAC);
 }
 void SimWindow::addDataCurveRR()
@@ -1253,8 +1225,6 @@ void SimWindow::addDataCurveRR()
             _RRPlot->setColor(Qt::gray);
         _RRPlot->setPointSize(5);
         _RRPlot->setData(_timeBins,_dataTable[indexInBox]);
-        qDebug() << "SimWindow::addDataCurveRR bins" << _timeBins;
-//        qDebug() << "SimWindow::addDataCurveRR RR" << _dataTable[indexInBox];
         // enable buttons
         _analyzeSimulation->setEnabled(true);
         _analyzeRealData->setEnabled(true);
@@ -1277,7 +1247,7 @@ void SimWindow::addSimulationCurveTarget()
         _targetPlot->setColor(Qt::red); // 1st curve
     else
         _targetPlot->setColor(Qt::gray);
-    _targetPlot->setPointSize(5);
+    _targetPlot->setPointSize(0);
     int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
     dVector yTAC;    yTAC.resize(nTime);
@@ -1286,8 +1256,6 @@ void SimWindow::addSimulationCurveTarget()
         xTime[jt] = _simulator.getTimeCoarse(jt);
         yTAC[jt]  = _simulator.getCtDown(jt);
     }
-    qDebug() << "SimWindow::addSimulationCurveRR bins" << xTime;
-//    qDebug() << "SimWindow::addSimulationCurveRR RR"   << yTAC;
     _targetPlot->setData(xTime,yTAC);
 
 }
@@ -1311,10 +1279,6 @@ void SimWindow::addDataCurveTarget()
 
 void SimWindow::updateTargetGraph()
 {
-    qDebug() << "SimWindow::updateTargetGraph enter";
-    // run the simulation
-    _simulator.generateTargetTAC();
-
     // update the plot
     _targetPlot->init();
     _targetPlot->setLegendOn(true);
@@ -1330,13 +1294,11 @@ void SimWindow::updateTargetGraph()
         addDataCurveTarget();
     }
 
-    analyzeTAC();
-
-    int nTime = _simulator.getNumberTimeBinsCoarse();
+    int nTime = _PETRTM.getNumberTimePointsInRun(0);
     dVector xTime;   xTime.resize(nTime);
     dVector yTAC;    yTAC.resize(nTime);
     for (int jt=0; jt<nTime; jt++)
-        xTime[jt] = _simulator.getTimeCoarse(jt);
+        xTime[jt] = _PETRTM.getReferenceRegion(false,0,jt).x;
 
     // add fit
     _targetPlot->addCurve(0,"fit");
@@ -1350,7 +1312,7 @@ void SimWindow::updateTargetGraph()
     _targetPlot->addCurve(0,"RR");
     _targetPlot->setColor(Qt::gray);
     for (int jt=0; jt<nTime; jt++)
-        yTAC[jt]  = _simulator.getCrDown(jt);
+        yTAC[jt] = _PETRTM.getReferenceRegion(false,0,jt).y;
     _targetPlot->setData(xTime,yTAC);
 
     // add FRTM convolution
@@ -1362,7 +1324,8 @@ void SimWindow::updateTargetGraph()
             _targetPlot->addCurve(0,"convolution");
         _targetPlot->setColor(Qt::magenta);
         for (int jt=0; jt<nTime; jt++)
-            yTAC[jt]  = _simulator.getBP0() * _PETRTM.getFRTMConvolution(0,jt);
+//            yTAC[jt]  = _simulator.getBP0() * _PETRTM.getFRTMConvolution(0,jt);
+            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
         _targetPlot->setData(xTime,yTAC);
     }
     if ( _PETRTM.isFRTMNew() )
@@ -1376,34 +1339,30 @@ void SimWindow::updateTargetGraph()
 
     _targetPlot->conclude(0,true);
     _targetPlot->plotDataAndFit(true);
-    qDebug() << "SimWindow::updateTargetGraph exit";
 }
 
 void SimWindow::defineRTMModel()
 {
-    qDebug() << "SimWindow::defineRTMModel enter";
     static int firstTime=true;
     if ( analyzeRealData() )
     {
         // matrices: [nRuns][nTime]
-        dMatrix timeBins;  timeBins.resize(1);
+        iMatrix timeBinsSec;  timeBinsSec.resize(1);
         dMatrix refRegion; refRegion.resize(1);
-        timeBins[0]  = _dtBins;               // _dataTable[nColums]
+        timeBinsSec[0] = _dtBinsSec;          // _dataTable[nColums]
         refRegion[0] = _RRPlot->getYData(0);  // getYData(iCurve)
-        _PETRTM.setReferenceRegion(timeBins,refRegion);
+        _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
     else
     {
         int nTime = _simulator.getNumberTimeBinsCoarse();
-        dMatrix timeBins;  timeBins.resize(1);
-        timeBins[0] = _simulator.getTimeBinVector();
+        iMatrix timeBinsSec;  timeBinsSec.resize(1);
+        timeBinsSec[0] = _simulator.getTimeBinVectorSec();
         dMatrix refRegion; refRegion.resize(1);
         refRegion[0].resize(nTime);
         for (int jt=0; jt<nTime; jt++)
             refRegion[0][jt] = _simulator.getCrDown(jt);
-        qDebug() << "timeBins =" << timeBins;
-        qDebug() << "refRegion =" << refRegion;
-        _PETRTM.setReferenceRegion(timeBins,refRegion);
+        _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
     if ( firstTime )
     {
@@ -1420,7 +1379,6 @@ void SimWindow::defineRTMModel()
         _PETRTM.setTau4(0,_simulator.getTau4());
     }
     firstTime = false;
-    qDebug() << "SimWindow::defineRTMModel exit";
 }
 
 void SimWindow::updateBasisGraph()
@@ -1443,7 +1401,6 @@ void SimWindow::updateBasisGraph()
     _basisPlot->setData(xData, yData);
 
     int nBasis = _PETRTM.getNumberCoefficients();
-    qDebug() << "SimWindow::updateBasisGraph nBasis" << nBasis;
     for ( int jBasis=0; jBasis<nBasis; jBasis++)
     {
         if ( _PETRTM.getBasisType(jBasis) == Type_R1 )
@@ -1496,12 +1453,15 @@ void SimWindow::updateBasisGraph()
 
     _basisPlot->conclude(0,true);
     _basisPlot->plotDataAndFit(true);
-    qDebug() << "SimWindow::updateBasisGraph exit";
 }
 void SimWindow::updateAllGraphs()
 {
+    // run the simulation
+    _simulator.run();
+
     updatePlasmaGraph();
     updateReferenceGraph();
+    analyzeTAC();
     updateTargetGraph();
     updateBasisGraph();  // update basis graph AFTER target graph, because basis functions use target curve
 }
@@ -1532,8 +1492,6 @@ void SimWindow::analyzeTAC()
     dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
     _PETRTM.fitData(tissueVector,fitVector);
 
-    //
-    qDebug() << "SimWindow::analyzeTAC enter";
     // BPnd
     double truth = _simulator.getBP0();
     double guess = _PETRTM.getBP0InRun(0);
@@ -1561,7 +1519,6 @@ void SimWindow::analyzeTAC()
             truth = _simulator.getdk2k3();
             guess = _PETRTM.getdk2aInRun('c').x;
             _errordk2a->setText(analyzeString(truth,guess));
-            qDebug() << "compare dk2a" << truth << guess;
         }
         else
         { // dka2
@@ -1580,7 +1537,6 @@ void SimWindow::analyzeTAC()
     guess = _PETRTM.getTau2RefInRun(0);
     _errorTau2Ref->setText(analyzeString(truth,guess));
     dPoint2D k2Ref = _PETRTM.getk2RefInRun(0);
-    qDebug() << "k2Ref =" << k2Ref.x << "±" << k2Ref.y << "with relative error" << k2Ref.y / k2Ref.x * 100.;
 
     // challenge
     if ( _fitChallenge->isChecked() )
@@ -1620,7 +1576,22 @@ void SimWindow::analyzeTAC()
     valueString.setNum(sigma,'g',3);
     _sigma->setText(valueString);
 
-    qDebug() << "SimWindow::analyzeTAC exit";
+    if ( analyzeRealData() )
+    {
+//        if ( changedAnalysisRegion )
+//        {
+            double BPnd = _PETRTM.getBP0InRun(0);
+            double R1   = _PETRTM.getR1InRun(0).x;
+            _simulator.setBP0(BPnd);  _simulator.setR1(R1);
+            QString text; _BPnd->setText(text.setNum(BPnd));  _R1->setText(text.setNum(R1));
+            _simulator.generateTargetTAC();
+//        }
+        addSimulationCurveTarget();
+        updateTargetGraph();
+        _targetPlot->conclude(0,true);
+        _targetPlot->plotDataAndFit(true);
+    }
+
 }
 double SimWindow::getChallengeMagFromAnalysis()
 {
@@ -1673,30 +1644,61 @@ void SimWindow::changedNumberBins()
     if ( ok )
     {
         _simulator.setNumberBins(numberBins);
-        _PETRTM.setTimeBins(0,_simulator.getTimeBinVector());
+        _PETRTM.setTimePointsInRun(0,numberBins);
+        _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
+        _binIndex->setRange(1,numberBins);
         updateAllGraphs();
     }
     else
     {
         QString text;
-        _binDuration->setText(text.setNum(_simulator.getDuration()));
+        _numberTimeBins->setText(text.setNum(_simulator.getNumberTimeBinsCoarse()));
     }
+}
+void SimWindow::changedBinIndex(int indexPlusOne)
+{
+    int iBin = indexPlusOne-1;
+    double duration = _simulator.getDurationPerBinSec(iBin);
+    QString text; _binDuration->setText(text.setNum(duration));
 }
 void SimWindow::changedBinDuration()
 {
     bool ok;
-    double duration = _binDuration->text().toDouble(&ok);
+    int duration = _binDuration->text().toInt(&ok);
+    int iBin = _binIndex->value() - 1;
     if ( ok )
     {
-        int iBin = _binIndex->text().toInt(&ok);
-        _simulator.setDurationBin(iBin,duration/60.);  // convert sec to min
-        _PETRTM.setTimeBins(0,_simulator.getTimeBinVector());
+        if ( _applyToAllBinDuration->isChecked() )
+        {
+            int numberBins = _numberTimeBins->text().toInt(&ok);
+            for (int jBin=0; jBin<numberBins; jBin++)
+                _simulator.setDurationBin(jBin,duration);  // convert sec to min
+            _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
+        }
+        else
+        {
+            _simulator.setDurationBin(iBin,duration/60.);  // convert sec to min
+            _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
+        }
         updateAllGraphs();
     }
     else
     {
         QString text;
-        _binDuration->setText(text.setNum(_simulator.getDuration()));
+        _binDuration->setText(text.setNum(_simulator.getDurationPerBinSec(iBin)));
+    }
+}
+void SimWindow::changedApplyToAllBinDuration(bool state)
+{
+    if ( state )
+    {
+        bool ok;
+        int numberBins = _numberTimeBins->text().toInt(&ok);
+        double duration = _binDuration->text().toDouble(&ok);
+        for (int jBin=0; jBin<numberBins; jBin++)
+            _simulator.setDurationBin(jBin,duration/60.);  // convert sec to min
+        _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
+        updateAllGraphs();
     }
 }
 void SimWindow::changedSubSample()
@@ -1704,11 +1706,11 @@ void SimWindow::changedSubSample()
     QString stringEntered = _subSample->text();
     bool ok;
     int lSubSample = stringEntered.toInt(&ok);
-    int iBin = _binIndex->text().toInt(&ok);
+    int iBin = _binIndex->value() - 1;
     if ( ok )
     {
         _simulator.setSamplesPerBin(iBin,lSubSample);
-        _PETRTM.setTimeBins(0,_simulator.getTimeBinVector());
+        _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
         updateAllGraphs();
     }
     else
@@ -1961,7 +1963,6 @@ void SimWindow::changedTau2RefAnalysis()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        qDebug() << "changed tau2Ref (analysis) to" << value;
         _PETRTM.setTau2Ref(0,value);
         updateAllGraphs();
     }
@@ -1983,7 +1984,6 @@ void SimWindow::changedTau4Analysis()
 }
 void SimWindow::changedCheckBoxFitk4(bool state)
 {
-    qDebug() << "SimWindow::changedCheckBoxFitk4" << state;
     _errork4Label->setVisible(state);
     _errork4->setVisible(state);
     _checkBoxk4ErrGraph->setChecked(state);
@@ -1991,13 +1991,10 @@ void SimWindow::changedCheckBoxFitk4(bool state)
 //    clearTimeCurves();
     _PETRTM.setFitk4State(state);
     _PETRTM.setPrepared(false);
-    qDebug() << "SimWindow::changedCheckBoxFitk4 update";
     updateAllGraphs();
-    qDebug() << "SimWindow::changedCheckBoxFitk4 exit";
 }
 void SimWindow::changedCheckBoxChallenge(bool state)
 {
-    qDebug() << "SimWindow::changedCheckBoxChallenge" << state;
     _errorChallengeLabel->setVisible(state);
     _errorChallenge->setVisible(state);
     _checkBoxChallErrGraph->setChecked(state);
@@ -2086,15 +2083,10 @@ void SimWindow::changedTimeHigh()
 }
 void SimWindow::changedVersusBPndGraphs()
 {
-    qDebug() << "SimWindow::changedVersusBPndGraphs enter";
     _errBPndPlot->getPlotSurface()->setVisible(_checkBoxBPndErrGraph->isChecked());
-    qDebug() << "SimWindow::changedVersusBPndGraphs 1";
     _errChallPlot->getPlotSurface()->setVisible(_checkBoxChallErrGraph->isChecked());
-    qDebug() << "SimWindow::changedVersusBPndGraphs 2";
     _tau2RefPlot->getPlotSurface()->setVisible(_checkBoxTau2RefGraph->isChecked());
-    qDebug() << "SimWindow::changedVersusBPndGraphs 3";
     _errk4Plot->getPlotSurface()->setVisible(_checkBoxk4ErrGraph->isChecked());
-    qDebug() << "SimWindow::changedVersusBPndGraphs exit";
 }
 void SimWindow::clearBPndCurves()
 {
@@ -2131,7 +2123,6 @@ void SimWindow::clearBPndCurves()
 void SimWindow::calculateBPndCurves()
 {
     bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
-    qDebug() << "SimWindow::calculateBPndCurves enter" << noisy << _simulator.getNoiseRef() << _simulator.getNoiseTar();
     if ( noisy )
     {
         calculateBPndCurvesInThreads();
@@ -2149,7 +2140,6 @@ void SimWindow::calculateBPndCurves()
     dVector xVector, errBPnd, errChall, tau2Ref, errTau4, errBPndRTM2, errChallRTM2;
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
     {
-        qDebug() << "BP0 =" << BP0;
         xVector.append(BP0);
         _simulator.setBP0(BP0);  // set BP0 and run a series of samples
 
@@ -2243,13 +2233,11 @@ void SimWindow::calculateBPndCurves()
         _errBPndPlot->setPointSize(5);
         _errBPndPlot->setPointStyle(QCPScatterStyle::ssCross);
         _errBPndPlot->setColor(colors[iColor]);
-        qDebug() << "setData4" << errBPndRTM2.size();
         _errBPndPlot->setData(xVector,errBPndRTM2);
         _errChallPlot->addCurve(0,"error_Challenge");
         _errChallPlot->setPointSize(5);
         _errChallPlot->setPointStyle(QCPScatterStyle::ssCross);
         _errChallPlot->setColor(colors[iColor]);
-        qDebug() << "setData5" << errChallRTM2.size();
         _errChallPlot->setData(xVector,errChallRTM2);
     }
 
@@ -2266,7 +2254,6 @@ void SimWindow::calculateBPndCurves()
 
 double SimWindow::bestTau2RefForRTM2()
 { // search for root
-    qDebug() << "SimWindow::bestTau2RefForRTM2 enter";
     double tau2Ref = _PETRTM.getTau2RefInRun(0);
     double trueBP0 = _simulator.getBP0();
     double estBP0  = _PETRTM.getBP0InRun(0);
@@ -2366,15 +2353,12 @@ void SimWindow::calculateTimeCurves()
 */
 void SimWindow::calculateBPndCurvesInThreads()
 {
-    qDebug() << "SimWindow::calculateBPndCurvesInThreads enter";
     updateLieDetectorProgress(10*_nThreads);
-    qDebug() << "SimWindow::calculateBPndCurvesInThreads 1";
 
     _BP0Vector.clear();
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
         _BP0Vector.append(BP0);
     _errBPndMatrix.clear(); _errChallMatrix.clear(); _tau2RefMatrix.clear(); _errTau4Matrix.clear();
-    qDebug() << "SimWindow::calculateBPndCurvesInThreads 2";
 
     /////////////////////////////////////////////////////////
     // Create the average volume.
@@ -2383,19 +2367,16 @@ void SimWindow::calculateBPndCurvesInThreads()
     simSegment.resize(_nThreads);
     for (int jThread=0; jThread<_nThreads; jThread++)
     {
-        qDebug() << "SimWindow::calculateBPndCurvesInThreads jThread" << jThread;
         simSegment[jThread] = new lieDetector(_numberSimulationsPerThread, _BP0Vector, _simulator, _PETRTM);
         connect(simSegment[jThread], SIGNAL(progressLieDetector(int)), this, SLOT(updateLieDetectorProgress(int)));
         connect(simSegment[jThread], SIGNAL(finishedLieDetector(dMatrix,dMatrix,dMatrix,dMatrix)),this,SLOT(finishedLieDetectorOneThread(dMatrix,dMatrix,dMatrix,dMatrix)));
         QThreadPool::globalInstance()->start(simSegment[jThread]);
     }
-    qDebug() << "SimWindow::calculateBPndCurvesInThreads exit";
 }
 
 void SimWindow::updateLieDetectorProgress(int iProgress)
 {
     static int progressCounter=0;
-    // qDebug() << "SimWindow::updateLieDetectorProgress enter" << progressCounter << "of" << _progressBar->maximum();
     if ( iProgress > 0 )  // this gives the range
     { // initialize with nVolumes = iProgress
         progressCounter = 0;
@@ -2410,7 +2391,6 @@ void SimWindow::updateLieDetectorProgress(int iProgress)
 
 void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4)
 {
-    qDebug() << "SimWindow::finishedLieDetectorOneThread enter";
     static int nThreadsFinished=0;
 
     if ( errBPnd.size() != _BP0Vector.size() )
@@ -2426,11 +2406,8 @@ void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, 
         _errBPndMatrix.resize(nBP0Values); _errChallMatrix.resize(nBP0Values);
         _tau2RefMatrix.resize(nBP0Values); _errTau4Matrix.resize(nBP0Values);
     }
-    qDebug() << "SimWindow::finishedLieDetectorOneThread 3";
     for (int jBP=0; jBP<nBP0Values; jBP++)
     {
-        qDebug() << "sizes1[" << jBP << "] =" << errBPnd[jBP].size() << errChall[jBP].size() << tau2Ref[jBP].size() << errTau4[jBP].size();
-        qDebug() << "sizes2[" << jBP << "] =" << _errBPndMatrix.size() << _errChallMatrix.size() << _tau2RefMatrix.size() << _errTau4Matrix.size();
         for ( int jSample=0; jSample<nSamples; jSample++)
         {
             _errBPndMatrix[jBP].append(errBPnd[jBP][jSample]);
@@ -2439,7 +2416,6 @@ void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, 
             _errTau4Matrix[jBP].append(errTau4[jBP][jSample]);
         }
     }
-    qDebug() << "SimWindow::finishedLieDetectorOneThread 4";
     mutex.unlock();
 
     nThreadsFinished++;
@@ -2450,12 +2426,10 @@ void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, 
         nThreadsFinished = 0;  // reset for next time
         finishedLieDetectorAllThreads();
     }
-    qDebug() << "SimWindow::finishedLieDetectorOneThread exit";
 }
 
 double SimWindow::calculateMean(dVector vec)
 {
-    qDebug() << "SimWindow::calculateMean enter" << vec.size();
     double mean = 0.;
     for (int j=0; j<vec.size(); j++)
         mean += vec[j];
@@ -2476,14 +2450,11 @@ void SimWindow::finishedLieDetectorAllThreads()
 {
     int nBP0Values = _BP0Vector.size();
     int nSamples   = _nThreads * _numberSimulationsPerThread;
-    qDebug() << "SimWindow::finishedLieDetectorAllThreads enter" << nBP0Values << nSamples;
 
     dVector errBP, errChall, tau2Ref, errTau4, errBPSEM, errChallSEM, tau2RefSEM, errTau4SEM;
     // determine the means
-    qDebug() << "SimWindow::finishedLieDetectorAllThreads 1";
     for (int jBP=0; jBP<nBP0Values; jBP++)
     {
-        qDebug() << "append to errBP the value" << calculateMean(_errBPndMatrix[jBP]);
         errBP.append(calculateMean(_errBPndMatrix[jBP]));
         errChall.append(calculateMean(_errChallMatrix[jBP]));
         tau2Ref.append(calculateMean(_tau2RefMatrix[jBP]));
@@ -2494,8 +2465,6 @@ void SimWindow::finishedLieDetectorAllThreads()
         tau2RefSEM.append(calculateStDev(tau2Ref[jBP],  _tau2RefMatrix[jBP])  / qSqrt(nSamples));
         errTau4SEM.append(calculateStDev(errTau4[jBP], _errTau4Matrix[jBP]) / qSqrt(nSamples));
     }
-    qDebug() << "SimWindow::finishedLieDetectorAllThreads 2" << errBP.size() << errChall.size() << tau2Ref.size();
-
 
     // restore the value of BPnd in simulator, plus regenerate graphs
     changedBPND();  // this will use the value saved in the text field of _BPnd, which should have changed during the simulation
@@ -2549,5 +2518,4 @@ void SimWindow::finishedLieDetectorAllThreads()
     _errk4Plot->plotDataAndFit(true);
 
     _progressBar->reset();
-    qDebug() << "SimWindow::finishedLieDetectorAllThreads enter";
 }
