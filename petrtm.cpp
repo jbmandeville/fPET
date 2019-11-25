@@ -1307,25 +1307,22 @@ void PETRTM::defineFrameInterpolation(int iRun)
     // First find the minimum bin width
     int nTimeInRun = _dtBinsSec[iRun].size();
     qDebug() << "defineFrameInterpolation 1" << _binSplit[iRun].size() << nTimeInRun;
-    if ( _binSplit[iRun].size() != nTimeInRun )
-        _binSplit[iRun].resize(nTimeInRun);
+    if ( _binSplit[iRun].size() != nTimeInRun )   _binSplit[iRun].resize(nTimeInRun);
     qDebug() << "defineFrameInterpolation 2" << _dtBinsSec[iRun];
-    int minBin=1e6;
+    _minBin[iRun]=1e6;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
         _binSplit[iRun][jt].clear();
-         if ( _dtBinsSec[iRun][jt] < minBin ) minBin = _dtBinsSec[iRun][jt];
+         if ( _dtBinsSec[iRun][jt] < _minBin[iRun] ) _minBin[iRun] = _dtBinsSec[iRun][jt];
     }
-    qDebug() << "defineFrameInterpolation minBin" << minBin;
-    _dtBinsSecUniform[iRun].clear();
+    qDebug() << "defineFrameInterpolation minBin" << _minBin[iRun];
     int iBinFine=0;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
-        int nSplit = _dtBinsSec[iRun][jt] / minBin;
-        if ( _dtBinsSec[iRun][jt] % minBin )
+        int nSplit = _dtBinsSec[iRun][jt] / _minBin[iRun];
+        if ( _dtBinsSec[iRun][jt] % _minBin[iRun] )
         {
             // designate the convolutions (rFRTM) cannot be used by clearing vectors
-            _dtBinsSecUniform[iRun].clear();
             _binSplit[iRun].clear();
             return;
         }
@@ -1333,16 +1330,67 @@ void PETRTM::defineFrameInterpolation(int iRun)
         {
             _binSplit[iRun][jt].clear();
             for (int jSplit=0; jSplit<nSplit; jSplit++, iBinFine++)
-            {
-                _dtBinsSecUniform[iRun].append(minBin);
                 _binSplit[iRun][jt].append(iBinFine);
+        }
+    }
+    for (int jt=0; jt<nTimeInRun; jt++)
+        qDebug() << "binSplit[" << jt << "] =" << _binSplit[iRun][jt];
+    qDebug() << "defineFrameInterpolation exit";
+}
+dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
+{
+    int nTime = _dtBinsSec[iRun].size();
+    dVector tissueFine;
+    for (int jt=0; jt<nTime; jt++)
+    {
+        int nSplit = _binSplit[iRun][jt].size() ;
+        if ( nSplit == 1 )
+        {
+            int indexFine = _binSplit[iRun][jt][0];  // original value
+            tissueFine[indexFine] = tissueVector[jt];
+        }
+        else
+        {
+            double t0 = getTimeInRun(iRun,jt-1);
+            double t1 = getTimeInRun(iRun,jt);
+            double t2 = getTimeInRun(iRun,jt+1);
+            double y0 = tissueVector[jt-1];
+            double y1 = tissueVector[jt];
+            double y2 = tissueVector[jt+1];
+            double binSize = _dtBinsSec[iRun][jt]/60.;
+            double tLowerEdge = t1 - binSize/2.;
+            double binSizeFine = binSize / static_cast<double>(nSplit);
+            for (int jSplit=0; jSplit<nSplit; jSplit++)
+            {
+                double t = tLowerEdge + binSizeFine * (jSplit + 0.5);
+                tissueFine.append(interpolateNewtonDividedDifferencesQuad(t,t0,t1,t2,y0,y1,y2));
             }
         }
     }
-    qDebug() << "_dtBinsSecUniform =" << _dtBinsSecUniform[iRun];
-    for (int jt=0; jt<nTimeInRun; jt++, iBinFine++)
-        qDebug() << "binSplit[" << jt << "] =" << _binSplit[iRun][jt];
-    qDebug() << "defineFrameInterpolation exit";
+    return tissueFine;
+}
+dVector PETRTM::combineFineTissueVector(int iRun, dVector tissueFine)
+{
+    int nTime = _dtBinsSec[iRun].size();
+    dVector tissueVector;  tissueVector.resize(nTime);
+    for (int jt=0; jt<nTime; jt++)
+    {
+        int nSplit = _binSplit[iRun][jt].size();
+        double sum=0.;
+        for (int jSplit=0; jSplit<nSplit; jSplit++)
+        {
+            int indexFine = _binSplit[iRun][jt][jSplit];
+            sum += tissueFine[indexFine];
+        }
+        tissueVector[jt] = sum / static_cast<double>(nSplit);
+    }
+    return tissueVector;
+}
+double PETRTM::interpolateNewtonDividedDifferencesQuad(double x, double x0, double x1, double x2, double f0, double f1, double f2)
+{
+    double secondDiff = ( (f1-f2)/(x1-x2) - (f0-f1)/(x0-x1) ) / x2-x1;
+    double f = f0 + (x-x0) * (f1-f0)/(x1-x0) + (x-x0)*(x-x1) * secondDiff;
+    return f;
 }
 
 void PETRTM::setTimeBinsSec(int iRun, iVector timeBinsSec)
@@ -1738,8 +1786,8 @@ void PETRTM::setNumberRuns(int nFiles)
         _weights.resize(_nRuns);
         _ignoreString.resize(_nRuns);
         _dtBinsSec.resize(_nRuns);
+        _minBin.fill(0,_nRuns);
         _binSplit.resize(_nRuns);
-        _dtBinsSecUniform.resize(_nRuns);
         _table.resize(_nRuns);     // [_nRuns][nTimeInRun][_nColumns]
         _quadLOESS.resize(_nRuns);     // nTimeInRun
         _columnNames.resize(_nRuns);
@@ -2167,23 +2215,6 @@ void PETRTM::writeGLMFileOldFormat(int iRun, QString fileName)
     if ( ignoredString.size() != 0 )
         out << "\nignore " << ignoredString << "\n";
     file.close();
-}
-
-double PETRTM::interpolateVector(dVector inputVector, double rBin)
-{
-    if ( rBin < 0. && rBin >= inputVector.size() ) return 0.;
-    int iBin  = qFloor(rBin);
-    int iHigh = iBin + 1;
-    if ( iHigh >= inputVector.size() )
-        return inputVector[iBin];
-    else
-    {
-        double valueLow  = inputVector[iBin];
-        double valueHigh = inputVector[iHigh];
-        double deltaBin = rBin - iBin;
-        double interpolate = valueLow + (valueHigh - valueLow) * deltaBin;
-        return interpolate;
-    }
 }
 
 double PETRTM::getTimeInRun(int iRun, double rBin)

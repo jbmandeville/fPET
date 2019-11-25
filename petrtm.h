@@ -97,8 +97,9 @@ private:
     QVector<QStringList> _columnNames; // [_nRuns]
     dMatrix3 _table;                   // [_nRuns][nTimeInRun][nColumns]; used for creating integrals
     iMatrix _dtBinsSec;                // [_nRuns][nTimeInRun]; bin width in seconds (integer!)
-    dMatrix _dtBinsSecUniform;         // [_nRuns][nTimeInRunFine]
-    iMatrix3 _binSplit;                // [_nRuns][nTimeInRun][nSplit]; last dimension points to
+    // The following are determined in defineFrameInterpolation()
+    iVector _minBin;                   // [_nRuns]; minimum bin size in seconds
+    iMatrix3 _binSplit;                // [_nRuns][nTimeInRun][nSplit]; last dimension points to fine bin index
 
     dMatrix _refRegionRaw;            // [_nRuns][nTimeInRun]; actual ref region data
     dMatrix _refRegion;               // [_nRuns][nTimeInRun]; value used in analysis (either raw or fit)
@@ -166,6 +167,9 @@ private:
     int readGLMFileNewFormat(int iRun, QString fileName);
 
     void defineFrameInterpolation(int iRun);
+    dVector interpolateTissueVector(int iRun, dVector tissueVector);
+    dVector combineFineTissueVector(int iRun, dVector tissueFine);
+    double interpolateNewtonDividedDifferencesQuad(double x, double x0, double x1, double x2, double f0, double f1, double f2);
 
 public:
     QString _refRegionName;
@@ -262,7 +266,6 @@ public:
     inline bool isVisible() {return _visibleInGUI;}
     double getTimeInRun(int iRun, int iTime);
     double getTimeInRun(int iRun, double rTime);
-    double interpolateVector(dVector inputVector, double rBin);
     inline int getNumberRuns() {return _nRuns;}
     inline int getNumberEvents() {return _basisID.size();}
     inline int getNumberTimePointsInRun(int iRun) {return _dtBinsSec[iRun].size();}
