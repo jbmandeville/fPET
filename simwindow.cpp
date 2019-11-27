@@ -124,7 +124,10 @@ void SimWindow::getTableDataFile()
                     return;
                 }
             }
+
             // update the GUI to refect the new information
+            disconnect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataReferenceRegion()));
+            disconnect(_dataTargetRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataTargetRegion()));
             _dataRefRegion->clear();
             _dataTargetRegion->clear();
             for (int jColumn=0; jColumn<_dataColumnNames.count(); jColumn++)
@@ -136,18 +139,19 @@ void SimWindow::getTableDataFile()
             // set the default target region to the first region after the bin info
             int iColumnFirstRegion = qMin(_dataColumnNames.count()-1,qMax(iColumnBinSize,iColumnBinTime)+1);
             _dataTargetRegion->setCurrentIndex(iColumnFirstRegion);
+            connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataReferenceRegion()));
+            connect(_dataTargetRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataTargetRegion()));
+
             enablePlasmaMatching(true);
             _ROIFileName->setToolTip(fileName);
             _ROIFileName->setText(utilString::getFileNameWithoutDirectory(fileName));
             // Resample the simulation to match the binning of the real data
-            QString text;
-            _numberTimeBins->setText(text.setNum(_dtBinsSec.size())); changedNumberBins();
             _simulator.setDurationBins(_dtBinsSec);
-            _PETRTM.setTimeBinsSec(0,_dtBinsSec);
+            QString text;
+            _numberTimeBins->setText(text.setNum(_dtBinsSec.size())); changedNumberBins();  // this will update _PETRTM to match _simulator
             // update the bin duration
             int iBin = _binIndex->value() - 1;
-            _binDuration->setText(text.setNum(_simulator.getDurationPerBinSec(iBin)));
-            updateAllGraphs();
+            _binDuration->setText(text.setNum(_simulator.getDurationPerBinSec(iBin)));  // this will update graphs
         }
     }
 }
@@ -203,7 +207,7 @@ bool SimWindow::defineTimeBinsFromTimePoints(QStringList validBinName, int &iCol
         }
         _timeBins.append(time);
     }
-    qDebug() << "SimWindow::defineTimeBinsFromTimePoints exit" << _dtBinsSec;
+//    qDebug() << "SimWindow::defineTimeBinsFromTimePoints exit" << _dtBinsSec;
     return true;
 }
 
@@ -1351,6 +1355,7 @@ void SimWindow::defineRTMModel()
         dMatrix refRegion; refRegion.resize(1);
         timeBinsSec[0] = _dtBinsSec;          // _dataTable[nColums]
         refRegion[0] = _RRPlot->getYData(0);  // getYData(iCurve)
+//        qDebug() << "defineRTMModel real data";
         _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
     else
@@ -1362,6 +1367,7 @@ void SimWindow::defineRTMModel()
         refRegion[0].resize(nTime);
         for (int jt=0; jt<nTime; jt++)
             refRegion[0][jt] = _simulator.getCrDown(jt);
+//        qDebug() << "defineRTMModel simulation";
         _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
     if ( firstTime )
@@ -1456,6 +1462,7 @@ void SimWindow::updateBasisGraph()
 }
 void SimWindow::updateAllGraphs()
 {
+//    qDebug() << "updateAllGraphs enter";
     // run the simulation
     _simulator.run();
 
@@ -1467,6 +1474,7 @@ void SimWindow::updateAllGraphs()
 }
 void SimWindow::analyzeTAC()
 {
+//    qDebug() << "analyzeTAC enter";
     // define analysis
     defineRTMModel();
     // update the RTM model
@@ -1549,7 +1557,10 @@ void SimWindow::analyzeTAC()
             diffString = "----";
         else
             diffString.setNum(guess-truth,'g',2);
-        _errorChallenge->setText(valueString + " %, diff = " + diffString + " %");
+        if ( analyzeRealData() )
+            _errorChallenge->setText(valueString + " %");
+        else
+            _errorChallenge->setText(valueString + " %, diff = " + diffString + " %");
     }
 
     // k4
@@ -1603,8 +1614,6 @@ double SimWindow::getChallengeMagFromAnalysis()
         _PETRTM.evaluateCurrentCondition();
         double percentChange = _PETRTM.getBPndInCurrentCondition().x;
         percentChange *= 100./_PETRTM.getBP0InRun(0);
-        if ( _PETRTM.isFRTMNew() )
-            percentChange *= -1.;
         return percentChange;
     }
     else
@@ -1641,10 +1650,10 @@ void SimWindow::changedNumberBins()
 {
     bool ok;
     int numberBins = _numberTimeBins->text().toInt(&ok);
-    if ( ok )
+    if ( ok && numberBins != _simulator.getNumberBins() )
     {
         _simulator.setNumberBins(numberBins);
-        _PETRTM.setTimePointsInRun(0,numberBins);
+        if ( _PETRTM.getNumberTimePointsInRun(0) != numberBins ) _PETRTM.setTimePointsInRun(0,numberBins);
         _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
         _binIndex->setRange(1,numberBins);
         updateAllGraphs();
@@ -1677,7 +1686,7 @@ void SimWindow::changedBinDuration()
         }
         else
         {
-            _simulator.setDurationBin(iBin,duration/60.);  // convert sec to min
+            _simulator.setDurationBin(iBin,duration);  // convert sec to min
             _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
         }
         updateAllGraphs();
@@ -1694,9 +1703,9 @@ void SimWindow::changedApplyToAllBinDuration(bool state)
     {
         bool ok;
         int numberBins = _numberTimeBins->text().toInt(&ok);
-        double duration = _binDuration->text().toDouble(&ok);
+        int duration = _binDuration->text().toInt(&ok);
         for (int jBin=0; jBin<numberBins; jBin++)
-            _simulator.setDurationBin(jBin,duration/60.);  // convert sec to min
+            _simulator.setDurationBin(jBin,duration);  // convert sec to min
         _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
         updateAllGraphs();
     }
@@ -2297,6 +2306,7 @@ void SimWindow::clearTimeCurves()
     _errBPndOrChallVsTimePlot->plotDataAndFit(true);
     _errBPndOrChallVsTimePlot->setXRange(xRange);
 }
+/*
 void SimWindow::calculateTimeCurves()
 {
     QMessageBox msgBox;
@@ -2304,7 +2314,7 @@ void SimWindow::calculateTimeCurves()
     msgBox.setIcon(QMessageBox::Critical);
     msgBox.exec();
 }
-/*
+*/
 void SimWindow::calculateTimeCurves()
 {
     QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
@@ -2312,45 +2322,57 @@ void SimWindow::calculateTimeCurves()
     int nCurves = _errBPndOrChallVsTimePlot->getNumberCurves();
     int iColor  = nCurves%10;
 
-    _errBPndOrChallVsTimePlot->addCurve(0,"error_BPnd");
-    _errBPndOrChallVsTimePlot->setPointSize(5);
-    _errBPndOrChallVsTimePlot->setColor(colors[iColor]);
-
-    dVector xVector, errVector;
-    double dt = _simulator.getBinResolution();
-    double saveTimeDuration  = _simulator.getDuration();
+    iVector saveTimeBinVector = _simulator.getTimeBinVectorSec();
     double saveChallengeTime = _simulator.getChallengeTime();
-    for (double time=_timeLowValue; time<=_timeHighValue; time += dt)
+    dVector xVector, errVector;
+    for (int jBin=0; jBin<_simulator.getNumberTimeBinsCoarse(); jBin++)
     {
-        xVector.append(time);
-        QString numberString;  numberString.setNum(time);
-        if ( _fitChallenge->isChecked() )
-        { // calculate the error in the challenge magnitude
-            _challengeTime->setText(numberString);  changedChallengeTime();
-            double truth = _simulator.getChallengeMag();
-            double guess = getChallengeMagFromAnalysis();
-            errVector.append(guess - truth);
-        }
-        else
-        { // calculate the percent error in BPnd
-//            _binDuration->setText(numberString);  changedTimeDuration();
-            double truth = _simulator.getBP0();
-            double guess = _PETRTM.getBP0InRun(0);
-            errVector.append(percentageError(guess,truth));
-            qDebug() << "change time to" << numberString << "with result" << guess;
+        double time = _simulator.getTimeCoarse(jBin);
+        if ( time >= _timeLowValue && time <= _timeHighValue)
+        {
+            xVector.append(time);
+            if ( _fitChallenge->isChecked() )
+            { // calculate the error in the challenge magnitude
+                QString numberString;  numberString.setNum(time);
+                _challengeTime->setText(numberString);  changedChallengeTime();
+                double truth = _simulator.getChallengeMag();
+                double guess = getChallengeMagFromAnalysis();
+                errVector.append(guess - truth);
+            }
+            else
+            { // calculate the percent error in BPnd
+                QString numberString;  numberString.setNum(jBin);
+                _numberTimeBins->setText(numberString);  changedNumberBins();
+
+                double truth = _simulator.getBP0();
+                double guess = _PETRTM.getBP0InRun(0);
+                errVector.append(percentageError(guess,truth));
+//                qDebug() << "change time to" << numberString << "with result" << guess;
+
+                _simulator.setNumberBins(saveTimeBinVector.length());
+                _simulator.setDurationBins(saveTimeBinVector);
+                _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
+            }
         }
     }
+
     // restore the time duration and challenge time
-    QString numberString;
-    _binDuration->setText(numberString.setNum(saveTimeDuration));
+    int nBins = saveTimeBinVector.length();
+    _simulator.setNumberBins(nBins);
+    _simulator.setDurationBins(saveTimeBinVector);
+    QString numberString;  _numberTimeBins->setText(numberString.setNum(nBins));  changedNumberBins();
+
     _challengeTime->setText(numberString.setNum(saveChallengeTime));
     changedChallengeTime();  // this will update the simulation and also the challenge time in analysis
 
+    _errBPndOrChallVsTimePlot->addCurve(0,"error_BPnd");
+    _errBPndOrChallVsTimePlot->setPointSize(5);
+    _errBPndOrChallVsTimePlot->setColor(colors[iColor]);
     _errBPndOrChallVsTimePlot->setData(xVector,errVector);
     _errBPndOrChallVsTimePlot->conclude(0,true);
     _errBPndOrChallVsTimePlot->plotDataAndFit(true);
 }
-*/
+
 void SimWindow::calculateBPndCurvesInThreads()
 {
     updateLieDetectorProgress(10*_nThreads);

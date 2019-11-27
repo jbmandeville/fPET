@@ -830,7 +830,7 @@ dPoint2D PETRTM::getBPndInCurrentCondition()
 //    qDebug() << "PETRTM::getBPndInCurrentCondition enter";
     dPoint2D BP;  BP.x = BP.y = 0.;
 
-    // updateConditions();
+    updateConditions();
 
     int iCondition = getCurrentCondition();
     // This condition should be composed entirely of k2a and challenge events.
@@ -882,7 +882,7 @@ dPoint2D PETRTM::getBPndInCurrentCondition()
                 // dBP = deltak2a/k2*(1+k2a/k2) / (1-deltak2a/k2)
                 if ( isFRTMNew() ) // "delta_k2a" = delta_k2k3 = k2 * k4 * dBP * BP/(1+BP)
                 {
-                    double DBPnd = deltak2a/k2 * (1+k2a/k2) / (1 - deltak2a/k2);
+                    double DBPnd = - deltak2a/k2 * (1+k2a/k2) / (1 - deltak2a/k2);
                     BP.x += DBPnd * _contrastMatrix[iCondition][0][iCoeff];
                     BP.y += DBPnd * DBPnd * ( k2Err2/k2/k2 + deltak2aErr2/deltak2a/deltak2a );
                 }
@@ -1303,19 +1303,19 @@ dPoint2D PETRTM::getReferenceRegionTimesR1(int iRun, int iTime)
 
 void PETRTM::defineFrameInterpolation(int iRun)
 {
-    qDebug() << "defineFrameInterpolation enter" << iRun << _binSplit.size();
+//    qDebug() << "defineFrameInterpolation enter" << iRun << _binSplit.size();
     // First find the minimum bin width
     int nTimeInRun = _dtBinsSec[iRun].size();
-    qDebug() << "defineFrameInterpolation 1" << _binSplit[iRun].size() << nTimeInRun;
+//    qDebug() << "defineFrameInterpolation 1" << _binSplit[iRun].size() << nTimeInRun;
     if ( _binSplit[iRun].size() != nTimeInRun )   _binSplit[iRun].resize(nTimeInRun);
-    qDebug() << "defineFrameInterpolation 2" << _dtBinsSec[iRun];
+//    qDebug() << "defineFrameInterpolation 2" << _dtBinsSec[iRun];
     _minBin[iRun]=1e6;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
         _binSplit[iRun][jt].clear();
          if ( _dtBinsSec[iRun][jt] < _minBin[iRun] ) _minBin[iRun] = _dtBinsSec[iRun][jt];
     }
-    qDebug() << "defineFrameInterpolation minBin" << _minBin[iRun];
+//    qDebug() << "defineFrameInterpolation minBin" << _minBin[iRun];
     int iBinFine=0;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
@@ -1333,9 +1333,9 @@ void PETRTM::defineFrameInterpolation(int iRun)
                 _binSplit[iRun][jt].append(iBinFine);
         }
     }
-    for (int jt=0; jt<nTimeInRun; jt++)
-        qDebug() << "binSplit[" << jt << "] =" << _binSplit[iRun][jt];
-    qDebug() << "defineFrameInterpolation exit";
+//    for (int jt=0; jt<nTimeInRun; jt++)
+//        qDebug() << "binSplit[" << jt << "] =" << _binSplit[iRun][jt];
+//    qDebug() << "bdefineFrameInterpolation exit";
 }
 dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
 {
@@ -1346,19 +1346,40 @@ dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
         int nSplit = _binSplit[iRun][jt].size() ;
         if ( nSplit == 1 )
         {
-            int indexFine = _binSplit[iRun][jt][0];  // original value
-            tissueFine[indexFine] = tissueVector[jt];
+            tissueFine.append(tissueVector[jt]);
+//            int indexFine = _binSplit[iRun][jt][0];  // original value
+//            tissueFine[indexFine] = tissueVector[jt];
         }
         else
         {
-            double t0 = getTimeInRun(iRun,jt-1);
             double t1 = getTimeInRun(iRun,jt);
-            double t2 = getTimeInRun(iRun,jt+1);
-            double y0 = tissueVector[jt-1];
             double y1 = tissueVector[jt];
-            double y2 = tissueVector[jt+1];
             double binSize = _dtBinsSec[iRun][jt]/60.;
             double tLowerEdge = t1 - binSize/2.;
+
+            // Lower point at jt-1 unless at endpoint
+            double t0, y0;
+            if ( jt != 0 )
+            {
+                t0 = getTimeInRun(iRun,jt-1);
+                y0 = tissueVector[jt-1];
+            }
+            else
+                t0 = y0 = 0.;
+
+            // Upper point at jt+1 unless at endpoint
+            double t2, y2;
+            if ( jt != nTime-1 )
+            {
+                t2 = getTimeInRun(iRun,jt+1);
+                y2 = tissueVector[jt+1];
+            }
+            else
+            {
+                t2 = t1 + binSize/2.;
+                y2 = y1;
+            }
+
             double binSizeFine = binSize / static_cast<double>(nSplit);
             for (int jSplit=0; jSplit<nSplit; jSplit++)
             {
@@ -1367,6 +1388,8 @@ dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
             }
         }
     }
+//    qDebug() << "input tissue vector" << tissueVector;
+//    qDebug() << "fine  tissue vector" << tissueFine;
     return tissueFine;
 }
 dVector PETRTM::combineFineTissueVector(int iRun, dVector tissueFine)
@@ -1388,7 +1411,7 @@ dVector PETRTM::combineFineTissueVector(int iRun, dVector tissueFine)
 }
 double PETRTM::interpolateNewtonDividedDifferencesQuad(double x, double x0, double x1, double x2, double f0, double f1, double f2)
 {
-    double secondDiff = ( (f1-f2)/(x1-x2) - (f0-f1)/(x0-x1) ) / x2-x1;
+    double secondDiff = ( (f1-f2)/(x1-x2) - (f0-f1)/(x0-x1) ) / (x2-x1);
     double f = f0 + (x-x0) * (f1-f0)/(x1-x0) + (x-x0)*(x-x1) * secondDiff;
     return f;
 }
@@ -1398,7 +1421,7 @@ void PETRTM::setTimeBinsSec(int iRun, iVector timeBinsSec)
     if ( iRun < _nRuns && iRun < _refRegion.size() )
     {
         if ( timeBinsSec.size() != _refRegion[iRun].size() )
-            qInfo() << "Error: the number of time bins (" << timeBinsSec.size() << ") does not match the reference region (" << _refRegion.size() << ").";
+            qInfo() << "Error: the number of time bins (" << timeBinsSec.size() << ") does not match the reference region (" << _refRegion[iRun].size() << ").";
         else
         {
             _dtBinsSec[iRun] = timeBinsSec;
@@ -2301,9 +2324,7 @@ void PETRTM::setTimePointsInRun(int iRun, int nTime)
             _table[iRun][jt].append(60.);  // initialize time bin widths (1st column=frames) to 1.
         }
         _quadLOESS[iRun].resize(nTime);
-    }
-    if ( _refRegion[iRun].size() != nTime || _tissRegion[iRun].size() != nTime )
-    {
+
         _dCrdtEventCoefficient.fill(-1,nTime);
         _refRegion[iRun].fill(0.,nTime);
         _refRegionRaw[iRun].fill(0.,nTime);
@@ -2315,8 +2336,8 @@ void PETRTM::setTimePointsInRun(int iRun, int nTime)
         _frtmConv_dCtdtERaw[iRun].fill(0.,nTime);
         _frtmConv_CtE[iRun].fill(0.,nTime);
         _frtmConvDeWeightUptake[iRun].fill(0.,nTime);
+        setTimeBinsSec(iRun,_dtBinsSec[iRun]);
     }
-    setTimeBinsSec(iRun,_dtBinsSec[iRun]);
     setPrepared(false);
 }
 
@@ -3178,19 +3199,27 @@ void PETRTM::calculateFRTMConvolution()
         if ( _tau4[jRun] != 0. )
         {   // tau4 != 0
             dVector equilibrationVector = getEquilibrationVector(jRun);  // = k4 * (1+BPnd)
-            _frtmConv_dCtdtERaw[jRun] = convolveEquilibration(jRun, _tissRegionDeriv[jRun], equilibrationVector);
-            _frtmConv_CtE[jRun]       = convolveEquilibration(jRun, _tissRegionRaw[jRun],   equilibrationVector);
-            double maxFRTMConv=0.;
-            for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
+            if ( isFRTMNew() )
             {
-                if ( qAbs(_frtmConv_dCtdtERaw[jRun][jt]) > maxFRTMConv ) maxFRTMConv = qAbs(_frtmConv_dCtdtERaw[jRun][jt]);
-                if ( _fitk4UsingFixedBPnd )
-                    _frtmConv_CtE[jRun][jt] *= _BPndForIterations[jRun];
-                else
-                    _frtmConv_CtE[jRun][jt] /= _tau4[jRun];
+                _frtmConv_CtE[jRun] = convolveEquilibration(jRun, _tissRegionRaw[jRun],   equilibrationVector);
+                for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
+                {
+                    if ( _fitk4UsingFixedBPnd )
+                        _frtmConv_CtE[jRun][jt] *= _BPndForIterations[jRun];
+                    else
+                        _frtmConv_CtE[jRun][jt] /= _tau4[jRun];
+                }
             }
-            for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
-                _frtmConvDeWeightUptake[jRun][jt] = (1. - qAbs(_frtmConv_dCtdtERaw[jRun][jt]) / maxFRTMConv);
+            else
+            {
+                _frtmConv_dCtdtERaw[jRun] = convolveEquilibration(jRun, _tissRegionDeriv[jRun], equilibrationVector);
+                double maxFRTMConv=0.;
+                for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
+                    if ( qAbs(_frtmConv_dCtdtERaw[jRun][jt]) > maxFRTMConv )
+                        maxFRTMConv = qAbs(_frtmConv_dCtdtERaw[jRun][jt]);
+                for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
+                    _frtmConvDeWeightUptake[jRun][jt] = (1. - qAbs(_frtmConv_dCtdtERaw[jRun][jt]) / maxFRTMConv);
+            }
         } // tau4 != 0
     } // jRun
 
@@ -3201,24 +3230,36 @@ void PETRTM::calculateFRTMConvolution()
 }
 dVector PETRTM::convolveEquilibration(int iRun, dVector tissue, dVector equilibration)
 {
-    int nTimeInRun = _dtBinsSec[iRun].size();
-    dVector convolution;  convolution.fill(0.,nTimeInRun);
-    for (int jt=0; jt<nTimeInRun; jt++)
+//    dVector tissueFine = tissue;
+//    dVector equilibrationFine = equilibration;
+    dVector tissueFine = interpolateTissueVector(iRun, tissue);
+    dVector equilibrationFine = interpolateTissueVector(iRun,equilibration);
+//    qDebug() << "fine sizes" << tissueFine.size() << equilibrationFine.size();
+
+    int nTimeFine = tissueFine.size();
+    double dt = static_cast<double>(_minBin[iRun])/60.;
+    dVector convolution;  convolution.fill(0.,nTimeFine);
+    for (int jt=0; jt<nTimeFine; jt++)
     {
         dVector exponential;          exponential.resize(jt+1);
         for ( int jtPrime=0; jtPrime<=jt; jtPrime++ )
         {
-            exponential[jtPrime] = qExp(-equilibration[jtPrime] * (getTimeInRun(iRun,jt-jtPrime)));
-            double dt = static_cast<double>(_dtBinsSec[iRun][jtPrime]/60.); // width of bin
+            double timeDiff = dt * (jt - jtPrime);
+            exponential[jtPrime] = qExp(-equilibrationFine[jtPrime] * timeDiff);
             // Discrete values of the integral do not represent the average value across the bin,
-            // so compute a correction factor to ensure that the exponential integral matches the continuous integral.
-            double correctionFactor = qExp(-equilibration[jtPrime]*dt/2.) / equilibration[jtPrime] / dt;
-            correctionFactor *= qExp(equilibration[jtPrime] * dt) - 1.;
+            // so compute a correction factor to equilibrationFine that the exponential integral matches the continuous integral.
+            double correctionFactor = qExp(-equilibrationFine[jtPrime]*dt/2.) / equilibrationFine[jtPrime] / dt;
+            correctionFactor *= qExp(equilibrationFine[jtPrime] * dt) - 1.;
+//            qDebug() << "exponential[" << jt << "][" << jtPrime << "] =" << exponential[jtPrime] << correctionFactor;
             exponential[jtPrime] *= correctionFactor;
-            convolution[jt] += tissue[jtPrime] * exponential[jtPrime] * dt;
+            convolution[jt] += tissueFine[jtPrime] * exponential[jtPrime] * dt;
         }
     } // jt
-    return convolution;
+    dVector convolutionLowRes = combineFineTissueVector(iRun,convolution);
+//    dVector convolutionLowRes = convolution;
+//    qDebug() << "convolutionHighRes" << convolution;
+//    qDebug() << "convolutionLowRes" << convolutionLowRes;
+    return convolutionLowRes;
 }
 
 void PETRTM::calculateBPndOrK4ForIteration()

@@ -15,23 +15,6 @@ enum RTMModelTypes
     RTM_rFRTM3New,// 3-parameter rFRTM: R1, k2, k2a (iterative) using fixed k4 to determine BPnd by formulation "k2a"=k2*k4*BPnd
     RTM_rFRTM2New// 2-parameter rFRTM:     k2, k2a (iterative) using fixed k4 to determine BPnd by formulation "k2a"=k2*k4*BPnd
 };
-enum PETWeightingModels
-{
-    Weights_Uniform,
-    Weights_11C_Noiseless,
-    Weights_11C,
-    Weights_noUptake,
-    Weights_18F_Noiseless,
-    Weights_18F
-};
-enum PETEventTypes
-{
-    Type_R1,
-    Type_k2,
-    Type_k2a,
-    Type_dCrdt,
-    Type_challenge
-};
 enum PETChallengeShapes // used both in PETRTM and timePage classes
 {
     Challenge_none,
@@ -194,6 +177,7 @@ public:
     QString createConditions();
     void definePETConditions(QString conditionString);
     void updateConditions();
+    inline RTMModelTypes getRTMModel() {return _modelRTM;}
     inline bool isSRTM() {return _modelRTM == RTM_SRTM2  || _modelRTM == RTM_SRTM3  || _modelRTM == RTM_SRTM2Fit;}
     inline bool isFRTM() {return _modelRTM == RTM_rFRTM2     || _modelRTM == RTM_rFRTM3
                 ||               _modelRTM == RTM_rFRTM3New || _modelRTM == RTM_rFRTM2New;}

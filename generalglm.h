@@ -27,6 +27,23 @@ enum fMRIEventShapes // used both in fMRI and timePage classes
     Shape_FR,
     Shape_RSFIR
 };
+enum PETWeightingModels
+{
+    Weights_Uniform,
+    Weights_11C_Noiseless,
+    Weights_11C,
+    Weights_noUptake,
+    Weights_18F_Noiseless,
+    Weights_18F
+};
+enum PETEventTypes
+{
+    Type_R1,
+    Type_k2,
+    Type_k2a,
+    Type_dCrdt,
+    Type_challenge
+};
 class GeneralGLM
 {
 #define MaxConditions 100
