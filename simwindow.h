@@ -194,6 +194,8 @@ private slots:
     void showTarget();
     inline void changedDataReferenceRegion() {updateAllGraphs();}
     inline void changedDataTargetRegion()    {updateAllGraphs();}
+    void clickedAnalyzeStimulation(bool state);
+    void clickedAnalyzeRealData(bool state);
 
     void changedNumberBins();
     void changedBinIndex(int indexPlusOne);

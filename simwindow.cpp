@@ -851,10 +851,23 @@ void SimWindow::createTargetPage()
     connect(radioShowBasisTarget, SIGNAL(clicked(bool)), this, SLOT(showBasisTarget()));
     connect(radioShowBasis,  SIGNAL(clicked(bool)), this, SLOT(showBasis()));
     connect(radioShowTarget, SIGNAL(clicked(bool)), this, SLOT(showTarget()));
-    connect(_analyzeSimulation, SIGNAL(clicked(bool)), this, SLOT(updateAllGraphs()));
-    connect(_analyzeRealData,   SIGNAL(clicked(bool)), this, SLOT(updateAllGraphs()));
+    connect(_analyzeSimulation, SIGNAL(clicked(bool)), this, SLOT(clickedAnalyzeStimulation(bool)));
+    connect(_analyzeRealData,   SIGNAL(clicked(bool)), this, SLOT(clickedAnalyzeRealData(bool)));
 
     _targetPage->setLayout(fullLayout);
+}
+
+void SimWindow::clickedAnalyzeStimulation(bool state)
+{
+    _calculateBPndCurves->setEnabled(state);
+    _calculateTimeCurves->setEnabled(state);
+    updateAllGraphs();
+}
+void SimWindow::clickedAnalyzeRealData(bool state)
+{
+    _calculateBPndCurves->setEnabled(!state);
+    _calculateTimeCurves->setEnabled(!state);
+    updateAllGraphs();
 }
 
 void SimWindow::createSweepBPndPage()
