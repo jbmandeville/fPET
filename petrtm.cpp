@@ -712,6 +712,7 @@ dVector PETRTM::getEquilibrationVector(int iFile)
     // OR 2) Fit k4 using fixed BPnd (saved from 1st pass in _BPndForIterations)
     int nTimeInRun = _dtBinsSec[iFile].size();
     dVector equilibrationVector;  equilibrationVector.fill(0.,nTimeInRun);
+//    qDebug() << "getEquilibrationVector tau4" << _tau4[0];
     for (int jt=0; jt<nTimeInRun; jt++)
         equilibrationVector[jt] = 1./_tau4[iFile] * (1. + _BPndForIterations[iFile] );
     return equilibrationVector;
@@ -1319,7 +1320,7 @@ void PETRTM::defineFrameInterpolation(int iRun)
     int iBinFine=0;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
-        int nSplit = _dtBinsSec[iRun][jt] / _minBin[iRun];
+        int nSplit = _interpolationFactor * _dtBinsSec[iRun][jt] / _minBin[iRun];
         if ( _dtBinsSec[iRun][jt] % _minBin[iRun] )
         {
             // designate the convolutions (rFRTM) cannot be used by clearing vectors
@@ -2373,6 +2374,7 @@ void PETRTM::prepare()
                 setRTMModelType(RTM_SRTM2);
             createAllBasisFunctions();
             fitData(_tissRegion);
+//            qDebug() << "PETRTM::prepare, BP0 =" << getBP0InRun(0);
             setRTMModelType(saveModel); // now FRTM has BPnd info
         }
     }
@@ -2502,6 +2504,7 @@ void PETRTM::fitWLSForIteration(dVector &data)
     {
         for (int jRun=0; jRun<_nRuns; jRun++)
             _BPndForIterations[jRun] = getBP0InRun(jRun);
+//        qDebug() << "save BPnd for iterations" <<_BPndForIterations[0];
     }
 
 }
@@ -2536,8 +2539,10 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
     for (int jCoeff=0; jCoeff<getNumberCoefficients(); jCoeff++)
         qDebug() << "coefficient" << jCoeff << "=" << getBeta(jCoeff);
 */
+    moreIterations = false;  // turn off loop: just fit 1ce with new model
     while (goodIteration && moreIterations)
     {
+        createAllBasisFunctions();
         fitDataByGLM(timeSeriesVector, yFit); // 1-step
 
         double sigma2 = getSigma2();
@@ -2569,7 +2574,6 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
 
     if ( !goodIteration )
         _nIterations *= -1;
-    /*
     else
     {
         // Attach the fit.
@@ -2583,7 +2587,6 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
             }
         }
     }
-    */
 //    qDebug() << "PETRTM::fitDataByGLMIterationForConsistency exit";
 }
 
@@ -3201,6 +3204,7 @@ void PETRTM::calculateFRTMConvolution()
             dVector equilibrationVector = getEquilibrationVector(jRun);  // = k4 * (1+BPnd)
             if ( isFRTMNew() )
             {
+//                qDebug() << "calculateFRTMConvolution check off" << _fitk4UsingFixedBPnd;
                 _frtmConv_CtE[jRun] = convolveEquilibration(jRun, _tissRegionRaw[jRun],   equilibrationVector);
                 for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
                 {
@@ -3237,7 +3241,7 @@ dVector PETRTM::convolveEquilibration(int iRun, dVector tissue, dVector equilibr
 //    qDebug() << "fine sizes" << tissueFine.size() << equilibrationFine.size();
 
     int nTimeFine = tissueFine.size();
-    double dt = static_cast<double>(_minBin[iRun])/60.;
+    double dt = static_cast<double>(_minBin[iRun])/60./static_cast<double>(_interpolationFactor);
     dVector convolution;  convolution.fill(0.,nTimeFine);
     for (int jt=0; jt<nTimeFine; jt++)
     {

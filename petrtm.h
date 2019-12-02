@@ -83,6 +83,7 @@ private:
     // The following are determined in defineFrameInterpolation()
     iVector _minBin;                   // [_nRuns]; minimum bin size in seconds
     iMatrix3 _binSplit;                // [_nRuns][nTimeInRun][nSplit]; last dimension points to fine bin index
+    int _interpolationFactor=10.;      // reduce bins (minBins) by this factor for improved interpolation in convolutions
 
     dMatrix _refRegionRaw;            // [_nRuns][nTimeInRun]; actual ref region data
     dMatrix _refRegion;               // [_nRuns][nTimeInRun]; value used in analysis (either raw or fit)
@@ -316,6 +317,7 @@ public:
     dPoint2D getdk2aInRun(QChar challengeID);
     dPoint2D getReferenceRegionTimesR1(int iRun, int iTime);
     dPoint2D getReferenceRegion(bool useFit, int iRun, int iTime);
+    inline dVector getReferenceRegionVector(int iRun) {return _refRegion[iRun];}
     dPoint2D getTissueRegion(bool useFit, int iRun, int iTime);
     QString getCurrentConditionTypeString();
     inline bool currentconditionIsBPType() {return (getCurrentConditionShape() == Type_k2a)

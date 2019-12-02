@@ -15,7 +15,11 @@ simEngine::simEngine()
 void simEngine::initializeBins()
 {
     if ( _nBins != _durationBinSec.size() )
+    {
+        double defaultBinSize=60;
+        if ( _durationBinSec.size() > 0 ) defaultBinSize = _durationBinSec[0];
         _durationBinSec.fill(60,_nBins);  // duration in min
+    }
     if ( _nBins != _numberSamplesPerBin.size() )
         _numberSamplesPerBin.fill(10,_nBins);
     updateFineSamples();

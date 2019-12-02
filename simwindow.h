@@ -170,6 +170,7 @@ private:
     void addDataCurveTarget();
     void defineRTMModel();
 
+    void scaleSimulationToDataAverage();
     void analyzeTAC();
     QString analyzeString(double truth, double guess);
     inline double percentageError(double guess, double truth) {return 100.*(guess/truth-1.);}
@@ -184,6 +185,7 @@ private:
     inline bool analyzeRealData() {return _analyzeRealData->isChecked();}
 
 private slots:
+    void exitApp();
     void updateAllGraphs();
     void changedNumberThreads(int indexInBox);
     void showPlasmaRR();

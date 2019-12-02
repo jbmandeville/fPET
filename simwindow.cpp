@@ -51,11 +51,17 @@ SimWindow::SimWindow()
     // add a menu
     QMenuBar *menuBar = new QMenuBar;
     mainLayout->setMenuBar(menuBar);
-    QMenu *openMenu  = new QMenu(tr("&Open"), this);
+    QMenu *openMenu  = new QMenu(tr("&Menu"), this);
     menuBar->addMenu(openMenu);
+
     QAction *openDataFileAction = openMenu->addAction(tr("Open table file (data)"));
     openDataFileAction->setShortcut(QKeySequence::Open);
     connect(openDataFileAction,  &QAction::triggered, this, &SimWindow::getTableDataFile);
+
+    QAction *quitAction = openMenu->addAction(tr("&Quit"));
+    // short-cuts and tooltips
+    quitAction->setShortcut(Qt::ControlModifier + Qt::Key_Q);
+    connect(quitAction,         &QAction::triggered, this, &SimWindow::exitApp);
 
     QSize defaultWindowSize;
     QRect rec = QApplication::desktop()->screenGeometry();
@@ -66,7 +72,11 @@ SimWindow::SimWindow()
 
     setThreadVisibility(false);
     updateAllGraphs();
+}
 
+void SimWindow::exitApp()
+{
+    exit(0);
 }
 
 void SimWindow::setThreadVisibility(bool state)
@@ -101,13 +111,13 @@ void SimWindow::getTableDataFile()
         }
         else
         {
-            QStringList validBinSizeName = {"dt","deltaTime","delta-time","delta_time",
-                                            "binSize","bin-size","bin_size",
-                                            "binTime","bin-time","bin_time",
-                                            "frameDuration","frame-duration","frame_duration",
-                                            "frameSize","frame-size","frame_size"};
-            QStringList validBinTimeName = {"t","time","time-point","time_point",
-                                            "frameTime","frame-time","frame_time"};
+            QStringList validBinSizeName = {"dt","delta-time","delta_time","deltaTime",
+                                            "bin-size","bin_size","binSize",
+                                            "bin-time","bin_time","binTime",
+                                            "frame-duration","frame_duration","frameDuration",
+                                            "frame-size","frame_size","frameSize"};
+            QStringList validBinTimeName = {"t","time","time-point","time_point", "timePoint",
+                                            "frame-time","frame_time","frameTime"};
             int iColumnBinSize=-1;  int iColumnBinTime=-1;
             if ( !defineTimeBinsFromBinSize(validBinSizeName, iColumnBinSize) )
             {
@@ -116,8 +126,9 @@ void SimWindow::getTableDataFile()
                     QString binList = validBinSizeName.join(", ");
                     QString binTime = validBinTimeName.join(", ");
                     QMessageBox msgBox;
-                    errorString = QString("The table must include either frame durations (1) or time points (2).\n(1)%1\n(2)%2").
-                            arg(binList).arg(binTime);
+                    errorString = QString("The table must include either frame durations or time points.\n\n");
+                    errorString += QString("Frame durations should use seconds and one of these column labels:\n%1\n\n").arg(binList);
+                    errorString += QString("Time points should use minutes and one of these column labels:\n%1\n").arg(binTime);
                     msgBox.setText(errorString);
                     msgBox.setIcon(QMessageBox::Critical);
                     msgBox.exec();
@@ -1203,7 +1214,6 @@ void SimWindow::updateReferenceGraph()
 
     _RRPlot->conclude(0,true);
     _RRPlot->plotDataAndFit(true);
-
 }
 
 void SimWindow::addSimulationCurveRR()
@@ -1264,7 +1274,7 @@ void SimWindow::addSimulationCurveTarget()
         _targetPlot->setColor(Qt::red); // 1st curve
     else
         _targetPlot->setColor(Qt::gray);
-    _targetPlot->setPointSize(0);
+    _targetPlot->setPointSize(3);
     int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
     dVector yTAC;    yTAC.resize(nTime);
@@ -1336,13 +1346,14 @@ void SimWindow::updateTargetGraph()
     if ( _PETRTM.isFRTM() )
     {
         if ( _PETRTM.isFRTMNew() )
-            _targetPlot->addCurve(0,"BP0*convolution");
+//            _targetPlot->addCurve(0,"BP0*convolution");
+            _targetPlot->addCurve(0,"convolution");
         else
             _targetPlot->addCurve(0,"convolution");
         _targetPlot->setColor(Qt::magenta);
         for (int jt=0; jt<nTime; jt++)
-//            yTAC[jt]  = _simulator.getBP0() * _PETRTM.getFRTMConvolution(0,jt);
-            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
+            yTAC[jt]  = _simulator.getBP0() * _PETRTM.getFRTMConvolution(0,jt);
+//            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
         _targetPlot->setData(xTime,yTAC);
     }
     if ( _PETRTM.isFRTMNew() )
@@ -1649,6 +1660,35 @@ QString SimWindow::analyzeString(double truth, double guess)
     }
 }
 
+void SimWindow::scaleSimulationToDataAverage()
+{
+    if ( !realDataAvailable() ) return;
+
+    // update the simulation
+    _simulator.run();
+
+    dVector data = _PETRTM.getReferenceRegionVector(0);
+    double dataAverage = 0.;
+    for (int jBin=0; jBin<data.size(); jBin++)
+        dataAverage += data[jBin];
+    dataAverage /= static_cast<double>(data.size());
+
+    dVector sim; sim.resize(data.size());
+    double simAverage = 0.;
+    for (int jBin=0; jBin<data.size(); jBin++)
+        simAverage += _simulator.getCrDown(jBin);
+    simAverage /= static_cast<double>(data.size());
+
+    double ratio = dataAverage / simAverage;
+//    qDebug() << "simAverage" << simAverage << "dataAverage" << dataAverage << "ratio" << ratio;
+
+    bool ok;  QString bolusText;
+    double bolusMag = _bolusMag->text().toDouble(&ok);
+    bolusMag *= ratio;
+    _bolusMag->setText(bolusText.setNum(bolusMag,'g',4));  changedBolusMag();
+
+}
+
 ///////////////////////////////////////
 // Slots
 ///////////////////////////////////////
@@ -1758,7 +1798,7 @@ void SimWindow::changedTauBolus()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setTauBolus(value);
+        _simulator.setTauBolus(value); scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
@@ -1771,7 +1811,7 @@ void SimWindow::changedInfusion()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setKBol(value);
+        _simulator.setKBol(value);  scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
@@ -1784,7 +1824,7 @@ void SimWindow::changedTau2Ref()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setTau2Ref(value);
+        _simulator.setTau2Ref(value);  scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
@@ -1797,7 +1837,7 @@ void SimWindow::changedTau1Ref()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setTau1Ref(value);
+        _simulator.setTau1Ref(value);  scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
@@ -1811,7 +1851,7 @@ void SimWindow::changedPlasmaFracRef()
     double value = utilityString.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setPlasmaPercentRef(value);
+        _simulator.setPlasmaPercentRef(value);  scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
@@ -1852,7 +1892,7 @@ void SimWindow::changedFastElimination()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setTauFastElim(value);
+        _simulator.setTauFastElim(value);  scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
@@ -1865,7 +1905,7 @@ void SimWindow::changedSlowElimination()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setTauSlowElim(value);
+        _simulator.setTauSlowElim(value);  scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
@@ -1878,7 +1918,7 @@ void SimWindow::changedFastEliminationFraction()
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
-        _simulator.setFastFraction(value);
+        _simulator.setFastFraction(value);  scaleSimulationToDataAverage();
         updateAllGraphs();
     }
     else
