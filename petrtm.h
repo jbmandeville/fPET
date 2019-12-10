@@ -83,7 +83,7 @@ private:
     // The following are determined in defineFrameInterpolation()
     iVector _minBin;                   // [_nRuns]; minimum bin size in seconds
     iMatrix3 _binSplit;                // [_nRuns][nTimeInRun][nSplit]; last dimension points to fine bin index
-    int _interpolationFactor=10.;      // reduce bins (minBins) by this factor for improved interpolation in convolutions
+    int _interpolationFactor=2.;       // reduce bins (minBins) by this factor for improved interpolation in convolutions
 
     dMatrix _refRegionRaw;            // [_nRuns][nTimeInRun]; actual ref region data
     dMatrix _refRegion;               // [_nRuns][nTimeInRun]; value used in analysis (either raw or fit)

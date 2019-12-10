@@ -52,7 +52,14 @@ SimWindow::SimWindow()
     QMenuBar *menuBar = new QMenuBar;
     mainLayout->setMenuBar(menuBar);
     QMenu *openMenu  = new QMenu(tr("&Menu"), this);
+    QMenu *helpMenu  = new QMenu(tr("Help"), this);
     menuBar->addMenu(openMenu);
+    menuBar->addMenu(helpMenu);
+
+    QAction *aboutAppAct = helpMenu->addAction(tr("About Simulator"));
+    QAction *aboutROIAct = helpMenu->addAction(tr("ROI file format"));
+    connect(aboutAppAct,     &QAction::triggered, this, &SimWindow::aboutApp);
+    connect(aboutROIAct,     &QAction::triggered, this, &SimWindow::aboutROI);
 
     QAction *openDataFileAction = openMenu->addAction(tr("Open table file (data)"));
     openDataFileAction->setShortcut(QKeySequence::Open);
@@ -62,6 +69,8 @@ SimWindow::SimWindow()
     // short-cuts and tooltips
     quitAction->setShortcut(Qt::ControlModifier + Qt::Key_Q);
     connect(quitAction,         &QAction::triggered, this, &SimWindow::exitApp);
+
+
 
     QSize defaultWindowSize;
     QRect rec = QApplication::desktop()->screenGeometry();
@@ -74,6 +83,37 @@ SimWindow::SimWindow()
     updateAllGraphs();
 }
 
+void SimWindow::aboutApp()
+{
+    QMessageBox msgBox;
+    QString version = qVersion();
+    QString text = "Qt Version " + version;
+    msgBox.setText(text);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.exec();
+
+    QMessageBox::information(nullptr, QGuiApplication::applicationDisplayName(),
+                             QGuiApplication::applicationDisplayName() + ' '
+                             + QCoreApplication::applicationVersion() + " , by Joe Mandeville;\n" +
+                             "Request bug fixes by email to\njbm@nmr.mgh.harvard.edu\nwith subject line 'simulator bug'.");
+}
+void SimWindow::aboutROI()
+{
+    QMessageBox msgBox;
+    QString ROIFile = "ROI file format (use extension .dat, .roi, .list, or .table)\n\n";
+    ROIFile += "label1 label2 label3 ...\n";
+    ROIFile += "value1(1) value2(1) value3(1)...\n";
+    ROIFile += "value1(2) value2(2) value3(2)...\n";
+    ROIFile += "value1(3) value2(3) value3(3)...\n";
+    ROIFile += "...\n\n";
+    QString binList  = _validBinSizeName.join(", ");
+    QString timeList = _validBinSizeName.join(", ");
+    QString text = ROIFile + "Valid labels for frame durations:\n" + binList;
+    text += "\n\nValid labels for frame time points:\n" + timeList;
+    msgBox.setText(text);
+//    msgBox.setIcon(QMessageBox::Information);
+    msgBox.exec();
+}
 void SimWindow::exitApp()
 {
     exit(0);
@@ -111,20 +151,13 @@ void SimWindow::getTableDataFile()
         }
         else
         {
-            QStringList validBinSizeName = {"dt","delta-time","delta_time","deltaTime",
-                                            "bin-size","bin_size","binSize",
-                                            "bin-time","bin_time","binTime",
-                                            "frame-duration","frame_duration","frameDuration",
-                                            "frame-size","frame_size","frameSize"};
-            QStringList validBinTimeName = {"t","time","time-point","time_point", "timePoint",
-                                            "frame-time","frame_time","frameTime"};
             int iColumnBinSize=-1;  int iColumnBinTime=-1;
-            if ( !defineTimeBinsFromBinSize(validBinSizeName, iColumnBinSize) )
+            if ( !defineTimeBinsFromBinSize(_validBinSizeName, iColumnBinSize) )
             {
-                if ( !defineTimeBinsFromTimePoints(validBinTimeName, iColumnBinTime) )
+                if ( !defineTimeBinsFromTimePoints(_validBinTimeName, iColumnBinTime) )
                 {
-                    QString binList = validBinSizeName.join(", ");
-                    QString binTime = validBinTimeName.join(", ");
+                    QString binList = _validBinSizeName.join(", ");
+                    QString binTime = _validBinTimeName.join(", ");
                     QMessageBox msgBox;
                     errorString = QString("The table must include either frame durations or time points.\n\n");
                     errorString += QString("Frame durations should use seconds and one of these column labels:\n%1\n\n").arg(binList);
@@ -208,17 +241,19 @@ bool SimWindow::defineTimeBinsFromTimePoints(QStringList validBinName, int &iCol
     for ( int jt=0; jt<_dataTable[iColumn].size(); jt++)
     {
         double time = _dataTable[iColumn][jt];  // input data is time
+        double dt;
         if ( jt == 0 )
-            _dtBinsSec.append(static_cast<int>(2.*time*60.));
+            dt = 2.*time*60.;
         else
         {
             double timeSec = time * 60.;
             double lowerEdgeSec = _timeBins.last()*60. + static_cast<double>(_dtBinsSec.last())/2.;
-            _dtBinsSec.append(static_cast<int>(2.*(timeSec-lowerEdgeSec)));
+            dt = 2.*(timeSec-lowerEdgeSec);
         }
+        _dtBinsSec.append(qRound(dt));
         _timeBins.append(time);
     }
-//    qDebug() << "SimWindow::defineTimeBinsFromTimePoints exit" << _dtBinsSec;
+    qDebug() << "SimWindow::defineTimeBinsFromTimePoints exit" << _dtBinsSec;
     return true;
 }
 

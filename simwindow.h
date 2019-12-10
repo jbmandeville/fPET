@@ -32,6 +32,14 @@ private:
     dVector _BP0Vector; // [# BP0 values]
     dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix; // [# BP0 values][nSimulations]
 
+    QStringList _validBinSizeName = {"dt","delta-time","delta_time","deltaTime",
+                                     "bin-size","bin_size","binSize",
+                                     "bin-time","bin_time","binTime",
+                                     "frame-duration","frame_duration","frameDuration",
+                                     "frame-size","frame_size","frameSize"};
+    QStringList _validBinTimeName = {"t","time","time-point","time_point", "timePoint",
+                                     "frame-time","frame_time","frameTime"};
+
     QTabWidget *_tabTimeSpace;
     QWidget *_setupPage;
     QWidget *_targetPage;
@@ -186,6 +194,8 @@ private:
 
 private slots:
     void exitApp();
+    void aboutApp();
+    void aboutROI();
     void updateAllGraphs();
     void changedNumberThreads(int indexInBox);
     void showPlasmaRR();
