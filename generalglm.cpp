@@ -750,8 +750,9 @@ void PolynomialGLM::define(int nCoeff, int nTime)
 {
     dVector xVector;  xVector.resize(nTime);
     double duration = nTime - 1;
+    // convert to a vector on the range -1,1
     for ( int jt=0; jt<nTime; jt++ )
-        xVector[jt] = static_cast<double>(jt)/duration;
+        xVector[jt] = 2.*static_cast<double>(jt)/duration - 1.;
     define(nCoeff, xVector);
 }
 
@@ -765,45 +766,43 @@ void PolynomialGLM::define(int nCoeff, dVector xVector)
       }
     else if ( nTime < nCoeff )
         nCoeff = nTime;
-    nCoeff = qMin(nCoeff,4);
+    nCoeff = qMin(nCoeff,6);
     // The following sets a flag; failure above will leave the flag unset
     init(nTime,nCoeff);
 
     // Create the basis functions.
     dVector X_t;
     X_t.resize(nTime);
-    // The constant offset values for each run ...
-    if ( nCoeff > 0 )
-      {
+    double xMin = xVector[0]; double xMax = xVector[nTime-1]; double duration = xMax - xMin;
+    for (int jPoly=0; jPoly<nCoeff; jPoly++)
+    {
         for ( int jt=0; jt<nTime; jt++ )
-            X_t[jt] = 1.;
-      }
-    addOrInsertBasisFunction(0,X_t);
-    // The drift corrections for each run ...
-    // Give each drift correction an average value of zero.
-    // 1st order: set range 0->1, then subtract 1/2 to make zero mean.
-    if ( nCoeff > 1 )
-      {
-        for ( int jt=0; jt<nTime; jt++ )
-            X_t[jt] = xVector[jt];
-        addOrInsertBasisFunction(1,X_t);
-      }
-    // 2nd order drift, if included ...
-    // Set range 0->1, then subtract 1/3 to make zero mean.
-    if ( nCoeff > 2 )
-      {
-        for ( int jt=0; jt<nTime; jt++ )
-            X_t[jt] = xVector[jt]*xVector[jt];
-        addOrInsertBasisFunction(2,X_t);
+        {
+            double minusOneToOne = 2.*(xVector[jt]-xMin)/duration - 1.;
+            X_t[jt] = baselineBasisFunction(jPoly,minusOneToOne);
+        }
+        addOrInsertBasisFunction(jPoly,X_t);
     }
-    // 3rd order drift, if included ...
-    if ( nCoeff > 3 )
-      {
-        for ( int jt=0; jt<nTime; jt++ )
-            X_t[jt] = xVector[jt]*xVector[jt]*xVector[jt];
-        addOrInsertBasisFunction(3,X_t);
-      }
+    // set uniform weights as default
     dVector weights;  weights.fill(1.,nTime);
     setWeights(weights);
     calculatePseudoInverse();
 }
+double PolynomialGLM::baselineBasisFunction(int iPoly, double x)
+{ // return Legendre polynomial of x with order iPoly
+    double value;
+    if ( iPoly == 0 )
+        value = 1.;
+    else if ( iPoly == 1 )
+        value = x;
+    else if ( iPoly == 2 )
+        value = 0.5 * (3*x*x -1.);
+    else if ( iPoly == 3 )
+        value = 0.5 * (5.*x*x*x - 3.*x);
+    else if ( iPoly == 4 )
+        value = 0.125 * (35.*x*x*x*x - 30.*x*x + 3.);
+    else // if ( iPoly == 5 )
+        value = 0.125 * (63.*x*x*x*x*x - 70.*x*x*x + 15.*x);
+    return value;
+}
+

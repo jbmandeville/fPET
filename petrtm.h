@@ -80,6 +80,7 @@ private:
     QVector<QStringList> _columnNames; // [_nRuns]
     dMatrix3 _table;                   // [_nRuns][nTimeInRun][nColumns]; used for creating integrals
     iMatrix _dtBinsSec;                // [_nRuns][nTimeInRun]; bin width in seconds (integer!)
+    dMatrix _timeInRun;                // [_nRuns][nTimeInRun]; time points in minutes (centers of bins)
     // The following are determined in defineFrameInterpolation()
     iVector _minBin;                   // [_nRuns]; minimum bin size in seconds
     iMatrix3 _binSplit;                // [_nRuns][nTimeInRun][nSplit]; last dimension points to fine bin index
@@ -204,7 +205,7 @@ public:
     inline void setWeightingModel(int whichWeightingModel) {_PETWeightingModel = whichWeightingModel; setPrepared(false);}
     inline void defineTimeModelFileConditions() {definePETConditions(_petConditionsFromTimeModelFile);}
     void setIgnoredPoints(int iRun, bool resetWeights, QString ignoreString);
-    void setTimePointsInRun(int iRun, int nTime);
+    void setNumberTimePointsInRun(int iRun, int nTime);
     void setNumberRuns(int nFiles);
     void setChallengeShape(int indexChallenge, int iShape);
     void setChallengeRun(int indexChallenge, int indexStimulus, int iRun);
@@ -317,6 +318,7 @@ public:
     dPoint2D getdk2aInRun(QChar challengeID);
     dPoint2D getReferenceRegionTimesR1(int iRun, int iTime);
     dPoint2D getReferenceRegion(bool useFit, int iRun, int iTime);
+    inline dVector getTimePointVector(int iRun) {return _timeInRun[iRun];}
     inline dVector getReferenceRegionVector(int iRun) {return _refRegion[iRun];}
     dPoint2D getTissueRegion(bool useFit, int iRun, int iTime);
     QString getCurrentConditionTypeString();

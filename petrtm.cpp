@@ -1245,28 +1245,31 @@ void PETRTM::setTissueVector(dMatrix tissueRegion)
 dPoint2D PETRTM::getReferenceRegion(bool useFit, int iRun, int iTime)
 { // pass useFit explicitly, so that this can be called externally to get both raw and fit
     dPoint2D returnValue;
-    returnValue.x= getTimeInRun(iRun,iTime);
+//    returnValue.x= getTimeInRun(iRun,iTime);
+    returnValue.x = _timeInRun[iRun][iTime];
     if ( useFit )
-        returnValue.y= _refRegion[iRun][iTime];     // could be raw or fit
+        returnValue.y = _refRegion[iRun][iTime];     // could be raw or fit
     else
-        returnValue.y= _refRegionRaw[iRun][iTime];  // always raw
+        returnValue.y = _refRegionRaw[iRun][iTime];  // always raw
     return returnValue;
 }
 dPoint2D PETRTM::getTissueRegion(bool useFit, int iRun, int iTime)
 {
     dPoint2D returnValue;
-    returnValue.x= getTimeInRun(iRun,iTime);
+//    returnValue.x = getTimeInRun(iRun,iTime);
+    returnValue.x = _timeInRun[iRun][iTime];
     if ( useFit )
-        returnValue.y= _tissRegion[iRun][iTime];    // could be either raw or fit
+        returnValue.y = _tissRegion[iRun][iTime];    // could be either raw or fit
     else
-        returnValue.y= _tissRegionRaw[iRun][iTime]; // always raw
+        returnValue.y = _tissRegionRaw[iRun][iTime]; // always raw
     return returnValue;
 }
 
 dPoint2D PETRTM::getReferenceRegionTimesR1(int iRun, int iTime)
 { // legacy function (xxx jbm)
     dPoint2D returnValue;
-    returnValue.x= getTimeInRun(iRun,iTime);
+//    returnValue.x = getTimeInRun(iRun,iTime);
+    returnValue.x = _timeInRun[iRun][iTime];
 
     if ( isRTM3() )
     { // get R1
@@ -1353,7 +1356,8 @@ dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
         }
         else
         {
-            double t1 = getTimeInRun(iRun,jt);
+//            double t1 = getTimeInRun(iRun,jt);
+            double t1 = _timeInRun[iRun][jt];
             double y1 = tissueVector[jt];
             double binSize = _dtBinsSec[iRun][jt]/60.;
             double tLowerEdge = t1 - binSize/2.;
@@ -1362,7 +1366,8 @@ dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
             double t0, y0;
             if ( jt != 0 )
             {
-                t0 = getTimeInRun(iRun,jt-1);
+//                t0 = getTimeInRun(iRun,jt-1);
+                t0 = _timeInRun[iRun][jt-1];
                 y0 = tissueVector[jt-1];
             }
             else
@@ -1372,7 +1377,8 @@ dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
             double t2, y2;
             if ( jt != nTime-1 )
             {
-                t2 = getTimeInRun(iRun,jt+1);
+//                t2 = getTimeInRun(iRun,jt+1);
+                t2 = _timeInRun[iRun][jt+1];
                 y2 = tissueVector[jt+1];
             }
             else
@@ -1427,12 +1433,13 @@ void PETRTM::setTimeBinsSec(int iRun, iVector timeBinsSec)
         {
             _dtBinsSec[iRun] = timeBinsSec;
             defineFrameInterpolation(iRun);
+            for (int jt=0; jt<timeBinsSec.size(); jt++)
+                _timeInRun[iRun][jt] = getTimeInRun(iRun, jt);
         }
     }
     else
         qFatal("Error: attempting to set time bins for non-existent run.");
     setPrepared(false);
-
 }
 
 void PETRTM::setReferenceRegionFromTableColumn(int iColumn)
@@ -1459,7 +1466,7 @@ void PETRTM::setReferenceRegion(iMatrix timeBinsSec, dMatrix referenceRegionRaw)
     setNumberRuns(nRuns);
     for (int jRun=0; jRun<nRuns; jRun++)
     {
-        setTimePointsInRun(jRun,referenceRegionRaw[jRun].size());
+        setNumberTimePointsInRun(jRun,referenceRegionRaw[jRun].size());
         setTimeBinsSec(jRun,timeBinsSec[jRun]);
         int nTimeInRun   = _dtBinsSec[jRun].size();
         for (int jt=0; jt<nTimeInRun; jt++)
@@ -1708,13 +1715,15 @@ bool PETRTM::isGoodStimulus( int indexChallenge, int indexStimulus )
     int iRun = _challengeRun[indexChallenge][indexStimulus];
     goodStimulus &= iRun >= 0;
     if ( goodStimulus && infoRequired == 1 ) //  including goodStimulus in test prevents iRun=-1 from throwing an error
-        goodStimulus &= _challengeOn[indexChallenge][indexStimulus] >= getTimeInRun(iRun,0);
+//        goodStimulus &= _challengeOn[indexChallenge][indexStimulus] >= getTimeInRun(iRun,0);
+        goodStimulus &= _challengeOn[indexChallenge][indexStimulus] >= _timeInRun[iRun][0];
     else if ( goodStimulus && infoRequired == 2 )
     { // stim OFF > ON && ON falls within run timing
         goodStimulus &= _challengeOff[indexChallenge][indexStimulus] > _challengeOn[indexChallenge][indexStimulus];
         goodStimulus &= _challengeOn[indexChallenge][indexStimulus]  >= 0.;
         int nTimeInRun = _dtBinsSec[iRun].size();
-        goodStimulus &= _challengeOn[indexChallenge][indexStimulus]  < getTimeInRun(iRun,nTimeInRun-1);
+//        goodStimulus &= _challengeOn[indexChallenge][indexStimulus]  < getTimeInRun(iRun,nTimeInRun-1);
+        goodStimulus &= _challengeOn[indexChallenge][indexStimulus]  < _timeInRun[iRun][nTimeInRun-1];
     }
     return goodStimulus;
 }
@@ -1810,6 +1819,7 @@ void PETRTM::setNumberRuns(int nFiles)
         _weights.resize(_nRuns);
         _ignoreString.resize(_nRuns);
         _dtBinsSec.resize(_nRuns);
+        _timeInRun.resize(_nRuns);
         _minBin.fill(0,_nRuns);
         _binSplit.resize(_nRuns);
         _table.resize(_nRuns);     // [_nRuns][nTimeInRun][_nColumns]
@@ -1974,12 +1984,14 @@ void PETRTM::defineLOESSFitting(int iRun)
     _quadLOESS[iRun].resize(nTimeInRun);
     for ( int jt=0; jt<nTimeInRun; jt++)
     {
-        double time0 = getTimeInRun(iRun,jt);
+//        double time0 = getTimeInRun(iRun,jt);
+        double time0 = _timeInRun[iRun][jt];
         double halfWidth = _smoothingScale;
         int iLowSide=0;  double time = time0;  double width=0.;  double maxWidth=0.;
         while ( jt - iLowSide >= 0 && width < halfWidth )
         {
-            time = getTimeInRun(iRun,jt-iLowSide);
+//            time = getTimeInRun(iRun,jt-iLowSide);
+            time = _timeInRun[iRun][jt-iLowSide];
             width = qAbs(time-time0);
             if ( width > maxWidth ) maxWidth = width;
             iLowSide++;
@@ -1988,7 +2000,8 @@ void PETRTM::defineLOESSFitting(int iRun)
         int iHighSide=0;  time = time0;  width = 0.;
         while ( jt + iHighSide < nTimeInRun && width < halfWidth )
         {
-            time = getTimeInRun(iRun,jt+iHighSide);
+//            time = getTimeInRun(iRun,jt+iHighSide);
+            time = _timeInRun[iRun][jt+iHighSide];
             width = qAbs(time-time0);
             if ( width > maxWidth ) maxWidth = width;
             iHighSide++;
@@ -2002,7 +2015,8 @@ void PETRTM::defineLOESSFitting(int iRun)
             int iTime = jt + jRel;
             if ( iTime >= 0 && iTime < nTimeInRun )
             {
-                time = getTimeInRun(iRun,iTime);
+//                time = getTimeInRun(iRun,iTime);
+                time = _timeInRun[iRun][iTime];
                 width = qAbs(time-time0);
                 double distance = width / maxWidth;  // maxWidth > 0 always
                 if ( distance < 1. )
@@ -2308,7 +2322,7 @@ bool PETRTM::getFrameStatus()
     return allFilesRead;
 }
 
-void PETRTM::setTimePointsInRun(int iRun, int nTime)
+void PETRTM::setNumberTimePointsInRun(int iRun, int nTime)
 {
     if ( iRun<0 || iRun >=_nRuns )
     {
@@ -2337,6 +2351,7 @@ void PETRTM::setTimePointsInRun(int iRun, int nTime)
         _frtmConv_dCtdtERaw[iRun].fill(0.,nTime);
         _frtmConv_CtE[iRun].fill(0.,nTime);
         _frtmConvDeWeightUptake[iRun].fill(0.,nTime);
+        _timeInRun[iRun].fill(1.,nTime);
         setTimeBinsSec(iRun,_dtBinsSec[iRun]);
     }
     setPrepared(false);
@@ -2863,7 +2878,8 @@ void PETRTM::setWeightsInRun(int iRun)
             if ( _PETWeightingModel == Weights_18F || _PETWeightingModel == Weights_18F_Noiseless )
                 tau = 110.;     // 18F, minutes
             tau *= 1.442695;    // convert from half life to exponential time constant
-            double time = getTimeInRun(iRun,jt);
+//            double time = getTimeInRun(iRun,jt);
+            double time = _timeInRun[iRun][jt];
             double dt = static_cast<double>(_dtBinsSec[iRun][jt])/60.;
             _weights[iRun][jt] = dt / qExp(time/tau);
             if ( _PETWeightingModel == Weights_11C || _PETWeightingModel == Weights_18F ) //|| _PETWeightingModel == Weights_noUptake )
@@ -3333,7 +3349,8 @@ void PETRTM::createChallengeShape(int iRun, int indexChallenge, dVector &shape)
         {
             for ( int jt=0; jt<nTimeInRun; jt++)
             {
-                double time = getTimeInRun(iRun,jt);
+//                double time = getTimeInRun(iRun,jt);
+                double time = _timeInRun[iRun][jt];
                 if ( _challengeShape[indexChallenge] == Challenge_Constant )
                     shape[jt] += 1.;
                 else if ( _challengeShape[indexChallenge] == Challenge_Square )
@@ -3443,20 +3460,23 @@ void PETRTM::averageStimuli(dMatrix yData, dMatrix yFit)
             int nTimeInRun = _dtBinsSec[iRun].size();
             for ( int jt=0; jt<nTimeInRun; jt++)
             {
-                double time = getTimeInRun(iRun,jt);
+//                double time = getTimeInRun(iRun,jt);
+                double time = _timeInRun[iRun][jt];
                 if ( time >= onSet )
                 {
                     iStart = jt;
                     break;
                 }
             } // jt
-            double time0 = getTimeInRun(iRun,iStart);
+//            double time0 = getTimeInRun(iRun,iStart);
+            double time0 = _timeInRun[iRun][iStart];
             int iTime = iStart - _nPreForChallAv;
             for ( int jt=0; jt<_yForChallAv.size(); jt++, iTime++)
             {
                 if ( iTime >= 0 && iTime < yData[iRun].size() )
                 {
-                    double time = getTimeInRun(iRun,iTime);
+//                    double time = getTimeInRun(iRun,iTime);
+                    double time = _timeInRun[iRun][iTime];
                     _xForChallAv[jt]    += (time - time0);
                     if ( useRatio )
                     {
@@ -3502,7 +3522,8 @@ void PETRTM::averageStimuli(dMatrix yData, dMatrix yFit)
                 int nTimeInRun = _dtBinsSec[iRun].size();
                 for ( int jt=0; jt<nTimeInRun; jt++)
                 {
-                    double time = getTimeInRun(iRun,jt);
+//                    double time = getTimeInRun(iRun,jt);
+                    double time = _timeInRun[iRun][jt];
                     if ( time >= onSet )
                     {
                         iStart = jt;

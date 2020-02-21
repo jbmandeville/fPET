@@ -107,9 +107,9 @@ void SimWindow::aboutROI()
     ROIFile += "value1(3) value2(3) value3(3)...\n";
     ROIFile += "...\n\n";
     QString binList  = _validBinSizeName.join(", ");
-    QString timeList = _validBinSizeName.join(", ");
-    QString text = ROIFile + "Valid labels for frame durations:\n" + binList;
-    text += "\n\nValid labels for frame time points:\n" + timeList;
+    QString timeList = _validBinTimeName.join(", ");
+    QString text = ROIFile + "Valid labels for frame durations (units=sec):\n" + binList;
+    text += "\n\nValid labels for frame time points (units=min):\n" + timeList;
     msgBox.setText(text);
 //    msgBox.setIcon(QMessageBox::Information);
     msgBox.exec();
@@ -196,6 +196,9 @@ void SimWindow::getTableDataFile()
             // update the bin duration
             int iBin = _binIndex->value() - 1;
             _binDuration->setText(text.setNum(_simulator.getDurationPerBinSec(iBin)));  // this will update graphs
+            // enable the starting point selector
+            _startWithPlasma->setEnabled(true);
+            _startWithRR->setEnabled(true);
         }
     }
 }
@@ -276,6 +279,9 @@ void SimWindow::createSetupPage()
     _RRPlot     = new plotData(1);
 
     //////// The setup page status bar
+    _plasmaStatusBar = new QStatusBar;  // must be global so it doesn't go out of scope
+    _plasmaStatusBar->setStyleSheet("color:blue");
+    _plasmaPlot->setQCStatusBar(_plasmaStatusBar);
     _RRStatusBar = new QStatusBar;  // must be global so it doesn't go out of scope
     _RRStatusBar->setStyleSheet("color:blue");
     _RRPlot->setQCStatusBar(_RRStatusBar);
@@ -283,11 +289,13 @@ void SimWindow::createSetupPage()
 
     _setupPlotLayout = new QVBoxLayout();
     _setupPlotLayout->addWidget(_plasmaPlot->getPlotSurface());
+    _setupPlotLayout->addWidget(_plasmaStatusBar);
     _setupPlotLayout->addWidget(_RRPlot->getPlotSurface());
     _setupPlotLayout->addWidget(_RRStatusBar);
-    _setupPlotLayout->setStretch(0,1);     // basis plot
-    _setupPlotLayout->setStretch(1,1);     // time plot
-    showPlasmaRR();
+    _setupPlotLayout->setStretch(0,10);
+    _setupPlotLayout->setStretch(1,1);
+    _setupPlotLayout->setStretch(2,10);
+    _setupPlotLayout->setStretch(3,1);
     QString numberString;
     int editTextSize=80;
 
@@ -436,12 +444,29 @@ void SimWindow::createSetupPage()
     auto *realDataGroupBox = new QGroupBox("Real data (imported ROIs from table)");
     QLabel *dataLabel = new QLabel("Ref Region ROI");
     _dataRefRegion = new QComboBox();
+    QLabel *startingPointLabel = new QLabel("Simulation starting point");
+    _startWithPlasma = new QRadioButton("Plasma");
+    _startWithRR     = new QRadioButton("Ref Region");
+    _startWithPlasma->setChecked(true);
+    _startWithPlasma->setEnabled(false);
+    _startWithRR->setEnabled(false);
+
     auto *realDataLayout = new QGridLayout();
     realDataLayout->addWidget(_readROIFile,0,0);
     realDataLayout->addWidget(_ROIFileName,0,1);
     realDataLayout->addWidget(dataLabel,1,0);
     realDataLayout->addWidget(_dataRefRegion,1,1);
-    realDataGroupBox->setLayout(realDataLayout);
+
+    auto *startingPointLayout = new QHBoxLayout();
+    startingPointLayout->addWidget(startingPointLabel);
+    startingPointLayout->addWidget(_startWithPlasma);
+    startingPointLayout->addWidget(_startWithRR);
+    startingPointLayout->setEnabled(false);
+
+    auto *realDataAndStartingLayout = new QVBoxLayout();
+    realDataAndStartingLayout->addLayout(realDataLayout);
+    realDataAndStartingLayout->addLayout(startingPointLayout);
+    realDataGroupBox->setLayout(realDataAndStartingLayout);
 
     auto *rightLayout = new QVBoxLayout();
     rightLayout->addWidget(setupGroupBox);
@@ -484,10 +509,20 @@ void SimWindow::createSetupPage()
     separator2->setLineWidth(3);
     separator2->setFrameShadow(QFrame::Raised);
     QLabel *showLabel = new QLabel("show:",_setupPage);
-    auto *radioShowPlasmaRR  = new QRadioButton("Plasma/RR",_setupPage);
-    auto *radioShowPlasma    = new QRadioButton("Plasma",_setupPage);
-    auto *radioShowRR        = new QRadioButton("RR",_setupPage);
-    radioShowPlasmaRR->setChecked(true);
+//    auto *radioShowPlasmaRR  = new QRadioButton("Plasma/RR",_setupPage);
+    auto *radioShowPlasma    = new QRadioButton("Plasma, etc.",_setupPage);
+    auto *radioShowRR        = new QRadioButton("Ref. Region",_setupPage);
+    radioShowRR->setChecked(true);
+
+    _whichPlasmaPlot  = new QComboBox();
+    _whichPlasmaPlot->addItem("Cr (coarse) "); // 0
+    _whichPlasmaPlot->addItem("Cp (coarse) "); // 1
+    _whichPlasmaPlot->addItem("Cr (fine)   "); // 2
+    _whichPlasmaPlot->addItem("Cp (fine)   "); // 3
+    _whichPlasmaPlot->addItem("dt (coarse) "); // 4
+    _whichPlasmaPlot->addItem("dt (fine)   "); // 5
+    _whichPlasmaPlot->setCurrentIndex(0);
+    _whichPlasmaPlot->setVisible(true);
 
     QToolBar *graphToolBar = new QToolBar("graph tool bar");
     graphToolBar->addAction(dragXAction);
@@ -496,7 +531,7 @@ void SimWindow::createSetupPage()
 //    graphToolBar->addAction(crossCursorAct);
     graphToolBar->addWidget(separator1);
     graphToolBar->addWidget(showLabel);
-    graphToolBar->addWidget(radioShowPlasmaRR);
+    graphToolBar->addWidget(_whichPlasmaPlot);
     graphToolBar->addWidget(radioShowPlasma);
     graphToolBar->addWidget(radioShowRR);
     graphToolBar->addWidget(separator2);
@@ -516,7 +551,7 @@ void SimWindow::createSetupPage()
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _RRPlot, SLOT(setSelectPoints()));
 //    connect(crossCursorAct,  SIGNAL(triggered(bool)), _RRPlot, SLOT(setSelectPoints()));
 
-    connect(radioShowPlasmaRR, SIGNAL(clicked(bool)), this, SLOT(showPlasmaRR()));
+//    connect(radioShowPlasmaRR, SIGNAL(clicked(bool)), this, SLOT(showPlasmaRR()));
     connect(radioShowPlasma,   SIGNAL(clicked(bool)), this, SLOT(showPlasma()));
     connect(radioShowRR,       SIGNAL(clicked(bool)), this, SLOT(showRR()));
 
@@ -528,7 +563,55 @@ void SimWindow::createSetupPage()
     connect(_readROIFile, SIGNAL(pressed()), this, SLOT(getTableDataFile()));
     connect(_dataRefRegion, SIGNAL(currentIndexChanged(int)), this, SLOT(changedDataReferenceRegion()));
 
+    connect(_startWithRR, SIGNAL(toggled(bool)), this, SLOT(startWithRR(bool)));
+    connect(_whichPlasmaPlot, SIGNAL(currentIndexChanged(int)), this, SLOT(updateAllGraphs()));
+
+    showRR();
+    // showPlasma();
+
     _setupPage->setLayout(fullLayout);
+}
+
+void SimWindow::startWithRR(bool state)
+{
+    if ( state )
+    {
+        qDebug() << "startWithRR fit";
+        // get the RR time vector (x, not y)
+        dVector RRTimeVector = _PETRTM.getTimePointVector(0);
+        dVector RRVector     = _PETRTM.getReferenceRegionVector(0);
+        _fitRR.init(RRTimeVector, RRVector);
+        /*
+        _fitRR.setFitStage(0);
+        _fitRR.fitTAC(.001);
+        _fitRR.setFitStage(1);
+        _fitRR.fitTAC(.001);
+        _fitRR.setFitStage(2);
+        _fitRR.fitTAC(.001);
+        _fitRR.setFitStage(3);
+        _fitRR.fitTAC(.001);
+        _fitRR.setFitStage(4);
+        _fitRR.fitTAC(.001);
+        */
+        _fitRR.setPolynomial(3);
+        _fitRR.fitTau();
+        _fitRR.fitTauAndOnset();
+        _fitRR.fitTauAndAlpha();
+        _fitRR.fitTauAndOnset();
+        _fitRR.fitTauAndAlpha();
+        _fitRR.fitTauAndOnset();
+        _fitRR.fitTauAndAlpha();
+        _fitRR.fitTauAndOnset();
+        _fitRR.fitTauAndAlpha();
+        _fitRR.fitTauAndOnset();
+        _fitRR.fitTauAndAlpha();
+        _fitRR.fitTauAndOnset();
+        _fitRR.fitTauAndAlpha();
+        _fitRR.setPolynomial(6);
+        _fitRR.fitTauAndOnset();
+        _fitRR.fitTauAndAlpha();
+    }
+    updateAllGraphs();
 }
 
 void SimWindow::enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool enable)
@@ -861,7 +944,7 @@ void SimWindow::createTargetPage()
     showGroup->addButton(radioShowBasisTarget);
     showGroup->addButton(radioShowBasis);
     showGroup->addButton(radioShowTarget);
-    radioShowBasisTarget->setChecked(true);
+    radioShowTarget->setChecked(true);  showTarget();
 
     QLabel *analyzeLabel = new QLabel("analyze:",_targetPage);
     _analyzeSimulation = new QRadioButton("Simulation(s)",_targetPage);
@@ -1174,17 +1257,28 @@ void SimWindow::createVersusTimePage()
 void SimWindow::showPlasmaRR()
 {
     _plasmaPlot->getPlotSurface()->setVisible(true);
+    _plasmaStatusBar->setVisible(true);
     _RRPlot->getPlotSurface()->setVisible(true);
+    _whichPlasmaPlot->setEnabled(true);
+//    _RRStatusBar->setVisible(true);
 }
 void SimWindow::showPlasma()
 {
     _plasmaPlot->getPlotSurface()->setVisible(true);
+    _plasmaStatusBar->setVisible(true);
     _RRPlot->getPlotSurface()->setVisible(false);
+    _RRStatusBar->setVisible(false);
+    _whichPlasmaPlot->setEnabled(true);
+    qDebug() << "_whichPlasmaPlot visible true";
 }
 void SimWindow::showRR()
 {
     _plasmaPlot->getPlotSurface()->setVisible(false);
+    _plasmaStatusBar->setVisible(false);
     _RRPlot->getPlotSurface()->setVisible(true);
+    _RRStatusBar->setVisible(true);
+    _whichPlasmaPlot->setEnabled(false);
+    qDebug() << "_whichPlasmaPlot visible false";
 }
 void SimWindow::showBasisTarget()
 {
@@ -1201,10 +1295,9 @@ void SimWindow::showTarget()
     _basisPlot->getPlotSurface()->setVisible(false);
     _targetPlot->getPlotSurface()->setVisible(true);
 }
-
+/*
 void SimWindow::updatePlasmaGraph()
 {
-
     // update the plot
     _plasmaPlot->init();
     _plasmaPlot->setLegendOn(true);
@@ -1229,64 +1322,138 @@ void SimWindow::updatePlasmaGraph()
     _plasmaPlot->conclude(0,true);
     _plasmaPlot->plotDataAndFit(true);
 }
+*/
+
+void SimWindow::updatePlasmaGraph()
+{
+    int index = _whichPlasmaPlot->currentIndex();
+    bool fineScale = (index == 2) || (index == 3) || (index == 5);
+
+    // update the plot: RR
+    _plasmaPlot->init();
+    _plasmaPlot->setLegendOn(true);
+    if ( index != 0 )
+        _plasmaPlot->addCurve(0,_whichPlasmaPlot->currentText());
+
+    if ( index == 0 )
+    { // Cr coarse
+        if ( analyzeRealData() )
+            addDataCurveRR(_plasmaPlot);
+        else
+            addSimulationCurveRR(_plasmaPlot);
+    }
+    else if ( fineScale )
+    {
+        int nTime = _simulator.getNumberTimeBinsFine();
+        dVector xTime; xTime.resize(nTime);
+        dVector yTAC;  yTAC.resize(nTime);
+        for (int jt=0; jt<nTime; jt++)
+        {
+            xTime[jt] = _simulator.getTimeFine(jt);
+            if ( index == 2 )
+                yTAC[jt]  = _simulator.getCr(jt);
+            else if ( index == 3 )
+                yTAC[jt]  = _simulator.getCp(jt);
+            else
+                yTAC[jt]  = _simulator.getdtFine(jt);
+        }
+        _plasmaPlot->setData(xTime,yTAC);
+    }
+    else
+    { // Cp or dt in coarse units
+        int nTime = _simulator.getNumberTimeBinsCoarse();
+        dVector xTime; xTime.resize(nTime);
+        dVector yTAC;  yTAC.resize(nTime);
+        for (int jt=0; jt<nTime; jt++)
+        {
+            xTime[jt] = _simulator.getTimeCoarse(jt);
+            if ( _whichPlasmaPlot->currentIndex() == 1 )
+                yTAC[jt] = _simulator.getCpDown(jt);
+            else
+                yTAC[jt]  = _simulator.getdtCoarse(jt);
+        }
+        _plasmaPlot->setData(xTime,yTAC);
+    }
+
+    _plasmaPlot->setColor(Qt::black);
+    if ( fineScale )
+        _plasmaPlot->setPointSize(2);
+    else
+        _plasmaPlot->setPointSize(5);
+    _plasmaPlot->conclude(0,true);
+    _plasmaPlot->plotDataAndFit(true);
+}
+
 void SimWindow::updateReferenceGraph()
 {
-
     // update the plot: RR
     _RRPlot->init();
     _RRPlot->setLegendOn(true);
 
     if ( analyzeRealData() )
     {
-        addDataCurveRR();
-        addSimulationCurveRR();
+        addDataCurveRR(_RRPlot);
+        addSimulationCurveRR(_RRPlot);
     }
     else
     {
-        addSimulationCurveRR();
-        addDataCurveRR();
+        addSimulationCurveRR(_RRPlot);
+        addDataCurveRR(_RRPlot);
     }
 
     _RRPlot->conclude(0,true);
     _RRPlot->plotDataAndFit(true);
 }
 
-void SimWindow::addSimulationCurveRR()
+void SimWindow::addSimulationCurveRR(plotData *whichPlot)
 {
     if ( realDataAvailable() )
-        _RRPlot->addCurve(0,"RR: simulation");
+    {
+        if ( _startWithRR->isChecked() )
+            whichPlot->addCurve(0,"RR: fit");
+        else
+            whichPlot->addCurve(0,"RR: simulation");
+    }
     else
-        _RRPlot->addCurve(0,"RR");
-    if ( _RRPlot->getNumberCurves() == 1 )
-        _RRPlot->setColor(Qt::red); // 1st curve
+        whichPlot->addCurve(0,"RR");
+    if ( whichPlot->getNumberCurves() == 1 )
+        whichPlot->setColor(Qt::red); // 1st curve
     else
-        _RRPlot->setColor(Qt::gray);
-    _RRPlot->setPointSize(5);
-    int nTime = _simulator.getNumberTimeBinsCoarse();
-    dVector xTime;   xTime.resize(nTime);
-    dVector yTAC;    yTAC.resize(nTime);
-    dMatrix refRegion;  refRegion.resize(1);  refRegion[0].resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
+        whichPlot->setColor(Qt::gray);
+    whichPlot->setPointSize(5);
+    int nTimeSim = _simulator.getNumberTimeBinsCoarse();
+    if ( _startWithRR->isChecked() )
+    {
+        int nTimeFit = _fitRR.getNumberTimeBins();
+        if ( nTimeFit != nTimeSim )
+            qFatal("nTime in simulation and fit not equal in SimWindow::addSimulationCurveRR");
+    }
+    dVector xTime;   xTime.resize(nTimeSim);
+    dVector yTAC;    yTAC.resize(nTimeSim);
+    for (int jt=0; jt<nTimeSim; jt++)
     {
         xTime[jt] = _simulator.getTimeCoarse(jt);
-        yTAC[jt]  = refRegion[0][jt] = _simulator.getCrDown(jt);
+        if ( _startWithRR->isChecked() )
+            yTAC[jt] = _fitRR.getFit(jt);
+        else
+            yTAC[jt] = _simulator.getCrDown(jt);
     }
-    _RRPlot->setData(xTime,yTAC);
+    whichPlot->setData(xTime,yTAC);
 }
-void SimWindow::addDataCurveRR()
+void SimWindow::addDataCurveRR(plotData *whichPlot)
 {
     if ( realDataAvailable() )
     {
         int indexInBox = _dataRefRegion->currentIndex();
         if ( indexInBox >= _dataTable.size() )
             qFatal("Fatal Error: the combo-box index exceeds the table index.");
-        _RRPlot->addCurve(0,"RR: ROI data");
-        if ( _RRPlot->getNumberCurves() == 1 )
-            _RRPlot->setColor(Qt::red); // 1st curve
+        whichPlot->addCurve(0,"RR: ROI data");
+        if ( whichPlot->getNumberCurves() == 1 )
+            whichPlot->setColor(Qt::red); // 1st curve
         else
-            _RRPlot->setColor(Qt::gray);
-        _RRPlot->setPointSize(5);
-        _RRPlot->setData(_timeBins,_dataTable[indexInBox]);
+            whichPlot->setColor(Qt::gray);
+        whichPlot->setPointSize(5);
+        whichPlot->setData(_timeBins,_dataTable[indexInBox]);
         // enable buttons
         _analyzeSimulation->setEnabled(true);
         _analyzeRealData->setEnabled(true);
@@ -1741,7 +1908,7 @@ void SimWindow::changedNumberBins()
     if ( ok && numberBins != _simulator.getNumberBins() )
     {
         _simulator.setNumberBins(numberBins);
-        if ( _PETRTM.getNumberTimePointsInRun(0) != numberBins ) _PETRTM.setTimePointsInRun(0,numberBins);
+        if ( _PETRTM.getNumberTimePointsInRun(0) != numberBins ) _PETRTM.setNumberTimePointsInRun(0,numberBins);
         _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
         _binIndex->setRange(1,numberBins);
         updateAllGraphs();
@@ -2628,4 +2795,340 @@ void SimWindow::finishedLieDetectorAllThreads()
     _errk4Plot->plotDataAndFit(true);
 
     _progressBar->reset();
+}
+
+void Fitter::init(dVector RRTimeVector, dVector RRVector)
+{
+    qDebug() << "Fitter::init enter";
+    _RRTimeVector   = RRTimeVector;
+    _RRVector       = RRVector;
+    // define a polynomial based upon the RR bins, which may be unevenly spaced
+    _polyPlusGammaForRR.define(_nPoly,_RRTimeVector);
+    // Now add a gamma basis function, with variable parameters 1) onset time, 2) alpha, 3) tau
+    // find starting point for tau
+    double rrMaxTime = 0.;   double rrMaxValue = 0.;
+    for (int jt=0; jt<_RRTimeVector.size(); jt++)
+    {
+        if ( _RRVector[jt] > rrMaxValue )
+        {
+            rrMaxValue = _RRVector[jt];
+            rrMaxTime  = _RRTimeVector[jt];
+        }
+    }
+    double tau = rrMaxTime;  double onsetTime = 0;  double alpha = 1.;
+    _gammaParVal.resize(_nPar);     _gammaParInc.resize(_nPar);     _gammaParAdj.resize(_nPar);
+    _gammaParVal[0] = onsetTime;    _gammaParVal[1] = alpha;        _gammaParVal[2] = tau;
+    _gammaParInc[0] = 0.5;          _gammaParInc[1] = alpha/10.;    _gammaParInc[2] = tau/10.;
+    _gammaParAdj[0] = true;         _gammaParAdj[1] = true;         _gammaParAdj[2] = true;
+    double costInit = fitRRComputeCost();
+    qDebug() << "Fitter::init exit" << costInit;
+}
+
+void Fitter::setFitStage(int stage)
+{
+    _gammaParAdj[0] = _gammaParAdj[1] = _gammaParAdj[2] = false;
+    if ( stage == 0 )
+    {
+        _gammaParAdj[2] = true; // adjust tau
+        setPolynomial(3);
+    }
+    else if ( stage == 1 )
+    {
+        _gammaParAdj[0] = _gammaParAdj[2] = true; // adjust onset and tau
+        setPolynomial(3);
+    }
+    else if ( stage == 2 )
+    {
+        _gammaParAdj[1] = _gammaParAdj[2] = true; // adjust alpha and tau
+        setPolynomial(3);
+    }
+    else if ( stage == 3)
+    {
+        _gammaParAdj[0] = _gammaParAdj[1] = _gammaParAdj[2] = true;  // adjust everything
+        setPolynomial(3);
+    }
+    else
+    {
+        _gammaParAdj[0] = _gammaParAdj[1] = _gammaParAdj[2] = true;   // adjust everything
+        setPolynomial(6);
+    }
+}
+
+void Fitter::setPolynomial(int nPoly)
+{ // only call this this function AFTER initializing the RR
+    qDebug() << "Fitter::setPolynomial enter" << nPoly;
+    _nPoly = nPoly;
+    // define a polynomial based upon the RR bins, which may be unevenly spaced
+    _polyPlusGammaForRR.define(_nPoly,_RRTimeVector);
+    _gammaParInc[0] = 0.5;          _gammaParInc[1] = _gammaParVal[1]/10.;    _gammaParInc[2] = _gammaParVal[2]/10.;
+    double costInit = fitRRComputeCost();
+    qDebug() << "Fitter::setPolynomial exit" << costInit;
+}
+
+double Fitter::fitRRComputeCost()
+{ // fit RR by GLM and compute sigma2
+    qDebug() << "Fitter::fitRRComputeCost enter";
+    double onsetTime = _gammaParVal.at(0);
+    double alpha     = _gammaParVal.at(1);
+    double tau       = _gammaParVal.at(2);
+    // get the RR time vector (x, not y)
+    dVector gammaBasis;  gammaBasis.fill(0.,_RRTimeVector.size());
+    for (int jt=0; jt<_RRTimeVector.size(); jt++)
+    {
+        double time = _RRTimeVector[jt];
+        time = jt;
+        double t = (time - onsetTime) / tau;
+        if ( t > 0. ) gammaBasis[jt] = qPow(t,alpha) * exp(alpha*(1.-t));
+    }
+    _polyPlusGammaForRR.addOrInsertBasisFunction(_nPoly,gammaBasis);
+    // The basis functions are complete
+    _polyPlusGammaForRR.fitWLS(_RRVector,true);
+    double cost = getCostFunction();
+    qDebug() << "Fitter::fitRRComputeCost exit" << cost;
+    return cost;
+}
+
+void Fitter::fitTAC(double toleranceCost) // toleranceCost is a fraction (e.g., 0.01 is 1%)
+{
+    qDebug() << "Fitter::fitTAC enter";
+    int iCount = 0;
+    // Find the best set of parameters at this resolution level.
+    bool converged = false;
+    int MAXIT = 50;
+    while ( !converged && iCount < MAXIT )
+    {
+        double costInitial = getCostFunction();
+        ////////////////////////
+        dVector costPar; costPar.resize(_nPar);
+        dVector incPar;  incPar.resize(_nPar);
+        // Test each parameter by increasing and decreasing its value by the increment.
+        for (int jPar=0; jPar<_nPar; jPar++)
+        {
+            if ( _gammaParAdj[jPar] && _gammaParInc[jPar] != 0. )
+            { // an increment of zero eliminates the parameter from the search
+                // find the best value for this parameter.
+                lineScan1D(jPar, costPar[jPar], incPar[jPar]);
+            }
+            else
+                costPar[jPar] = incPar[jPar]  = 0.;
+        }
+
+        // Normalize the costPar array.
+        double mag=0.;
+        for (int jPar=0; jPar<_nPar; jPar++)
+            mag += SQR(costPar[jPar]);
+        mag = qSqrt(mag);
+        // If the magnitude of the costPar vector is 0, then no values are lower than the
+        // original value.
+        if ( mag == 0. )
+            break;
+        for (int jPar=0; jPar<_nPar; jPar++)
+            costPar[jPar] /= mag;
+
+        // Calculate the projection of the incPar along the normalized costPar vector.
+        for (int jPar=0; jPar<_nPar; jPar++)
+        {
+            incPar[jPar] = incPar[jPar] * costPar[jPar];
+            if ( _gammaParAdj[jPar] ) _gammaParVal[jPar] += incPar[jPar];
+        }
+        qDebug() << "iteration" << iCount << "pars:" << _gammaParVal[0] << _gammaParVal[1] << _gammaParVal[2];
+        qDebug() << "iteration" << iCount << "incs:" << _gammaParInc[0] << _gammaParInc[1] << _gammaParInc[2];
+        qDebug() << "iteration" << iCount << "rCost:" << getCostFunction()/costInitial;
+        ////////////////////////
+        double costFinal = getCostFunction();
+        converged = qAbs(costFinal/costInitial - 1.) < toleranceCost;
+        converged &= iCount > 10;
+        qDebug() << "converged?" << costInitial << costFinal << qAbs(costFinal/costInitial - 1.) << toleranceCost;
+        iCount++;
+    }
+    qDebug() << "Fitter::fitTAC exit";
+}
+
+void Fitter::lineScan1D( int iPar, double &costRelative, double &incrementOpt )
+{ // return value is true if a change was made
+    qDebug() << "Fitter::lineScan1D enter" << iPar;
+    double valueInitial = _gammaParVal[iPar];
+    double costInitial  = fitRRComputeCost();  // refit with all initial parameter set
+    // Save the initial cost function.
+    double xParabola[3], yParabola[3];
+    xParabola[1] = valueInitial;
+    yParabola[1] = costInitial;
+
+    // Now test + and - directions
+    // test the - direction
+    double value0 = valueInitial - _gammaParInc[iPar];
+    _gammaParVal[iPar] = value0;
+    double cost0 = fitRRComputeCost();
+    xParabola[0] = value0;
+    yParabola[0] = cost0;
+
+    // test the + direction
+    double value2 = valueInitial + _gammaParInc[iPar];
+    _gammaParVal[iPar] = value2;
+    double cost2 = fitRRComputeCost();
+    xParabola[2] = value2;
+    yParabola[2] = cost2;
+
+    // allocate values that might be required if we need to keep going in one direction to find the max
+    bool capturedMinOrMax;
+    if ( _optHigh )
+        capturedMinOrMax = costInitial > cost0 && costInitial > cost2;  // costInitial is higher than either side, so good
+    else
+        capturedMinOrMax = costInitial < cost0 && costInitial < cost2;  // costInitial is lower than either side, so good
+    if ( capturedMinOrMax )
+    { // the increment range contains the maximum/minimum of the cost function, so interpolate to get the best estimate
+        double xMax, yMax;
+        if ( utilMath::ParabolicInterpolation(xParabola, yParabola, xMax, yMax) )
+        { // set the final increment to the interpolated value; half the increment range for next time
+            if ( _optHigh )
+                costRelative = yMax - costInitial;  // cost function should be growing
+            else
+                costRelative = costInitial - yMax;  // cost function should be shrinking
+            incrementOpt = xMax - valueInitial;
+            _gammaParInc[iPar] /= 2.;
+        }
+        else
+            // This should never happen.
+            costRelative = incrementOpt = 0.;
+    }
+    else if ( qFuzzyCompare(costInitial,cost0) || qFuzzyCompare(costInitial,cost2) )
+        // not enough information
+        costRelative = incrementOpt = 0.;
+    else
+    { // set the increment at the best edge
+        if ( cost2 > cost0 )  // cost2 > costInitial > cost0
+        {
+            if ( _optHigh )
+            {
+                incrementOpt = _gammaParInc[iPar];
+                costRelative = cost2 - costInitial;
+            }
+            else
+            {
+                incrementOpt = - _gammaParInc[iPar];
+                costRelative = costInitial - cost0;
+            }
+        }
+        else // cost0 > costInitial > cost2
+        {
+            if ( _optHigh )
+            {
+                incrementOpt = -_gammaParInc[iPar];
+                costRelative = cost0 - costInitial;
+            }
+            else
+            {
+                incrementOpt = _gammaParInc[iPar];
+                costRelative = costInitial - cost2;
+            }
+        }
+    }
+    _gammaParVal[iPar] = valueInitial;  // reset parameter value
+    qDebug() << "Fitter::lineScan1D exit" << iPar << _gammaParInc[iPar] << incrementOpt;
+    return;
+}
+
+void Fitter::fitTau()
+{
+    double tau = _gammaParVal.at(2);
+
+    double tauStart = tau/2.;            double tauStop = 2.*tau;            double tauStep   = tau/20.;  double bestTau = tau;
+    double bestSigma2 = 1.e10;
+    for ( tau=tauStart; tau<tauStop; tau+=tauStep)
+    {
+        _gammaParVal[2] = tau;
+        double sigma2 = fitRRComputeCost();
+        if ( sigma2 < bestSigma2 )
+        {
+            bestSigma2 = sigma2;
+            bestTau = tau;
+        }
+    }
+    _gammaParVal[2] = bestTau;
+    qDebug() << "fitTau" << _gammaParVal;
+    fitRRComputeCost();
+}
+
+void Fitter::fitTauAndOnset()
+{
+    double onset = _gammaParVal.at(0);
+    double tau   = _gammaParVal.at(2);
+
+    double tauStart = tau/2.;            double tauStop = 2.*tau;            double tauStep   = tau/20.;  double bestTau = tau;
+    double onSetStart = onset - tau/2.;  double onSetStop = onset + tau/2.;  double onSetStep = tau/10.;  double bestOnset = onset;
+    double bestSigma2 = 1.e10;
+    for ( onset=onSetStart; onset<onSetStop; onset+=onSetStep)
+    {
+        _gammaParVal[0] = onset;
+        for ( tau=tauStart; tau<tauStop; tau+=tauStep)
+        {
+            _gammaParVal[2] = tau;
+            double sigma2 = fitRRComputeCost();
+            if ( sigma2 < bestSigma2 )
+            {
+                bestSigma2 = sigma2;
+                bestTau = tau;
+                bestOnset = onset;
+            }
+        }
+    }
+    _gammaParVal[0] = bestOnset;
+    _gammaParVal[2] = bestTau;
+    qDebug() << "fitTauAndOnset" << _gammaParVal;
+    fitRRComputeCost();
+}
+
+void Fitter::fitTauAndAlpha()
+{
+    double tau   = _gammaParVal.at(2);
+    double alpha = _gammaParVal.at(1);
+
+    double tauStart = tau/2.;            double tauStop = 2.*tau;            double tauStep   = tau/20.;  double bestTau = tau;
+    dVector alphaVector = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.5, 2, 2.5, 3., 4., 5.};
+    double alphaStart = 0.1;     double alphaStop = 10.;
+    double bestSigma2 = 1.e10;   double bestAlpha = 1.;
+    for ( tau=tauStart; tau<tauStop; tau+=tauStep)
+    {
+        _gammaParVal[2] = tau;
+        for (int jAlpha=0; jAlpha<alphaVector.size(); jAlpha++)
+        {
+            _gammaParVal[1] = alphaVector[jAlpha];
+            double sigma2 = fitRRComputeCost();
+            if ( sigma2 < bestSigma2 )
+            {
+                bestSigma2 = sigma2;
+                bestTau = tau;
+                bestAlpha = alphaVector[jAlpha];
+            }
+        }
+    }
+    double rangePercent;
+    for ( rangePercent=20.; rangePercent>1.; rangePercent/=2. )
+    {
+        double rangeRatio = 1. + rangePercent/100.;
+        tauStart   = bestTau  /rangeRatio;  tauStop   = bestTau   * rangeRatio;  tauStep = (tauStop - tauStart)/5;
+        alphaStart = bestAlpha/rangeRatio;  alphaStop = bestAlpha * rangeRatio;  double alphaStep = (alphaStop - alphaStart)/5;
+        bestSigma2 = 1.e10;
+        for ( tau=tauStart; tau<tauStop; tau+=tauStep)
+        {
+            _gammaParVal[2] = tau;
+            for ( alpha=alphaStart; alpha<alphaStop; alpha+=alphaStep )
+            {
+                _gammaParVal[1] = alpha;
+                double sigma2 = fitRRComputeCost();
+                if ( sigma2 < bestSigma2 )
+                {
+                    bestSigma2 = sigma2;
+                    bestTau    = tau;
+                    bestAlpha  = alpha;
+                }
+            }
+        }
+        rangePercent = qMax(qMax(bestTau/tau,tau/bestTau),qMax(bestAlpha/alpha,alpha/bestAlpha));
+    }
+
+    _gammaParVal[1] = bestAlpha;
+    _gammaParVal[2] = bestTau;
+    qDebug() << "fitTauAndAlpha" << _gammaParVal;
+    fitRRComputeCost();
 }

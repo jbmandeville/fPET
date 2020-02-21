@@ -16,6 +16,7 @@ private:
     iVector _numberSamplesPerBin;  // [_nBins]
     dVector _dtFine;          // [sum of _numberSamplesPerBin = # of fine bins]
     dVector _timeFine;        // [sum of _numberSamplesPerBin = # of fine bins]
+    dVector _dtCoarse;        // [_nBins]
     dVector _timeCoarse;      // [_nBins]
     // Infusion
     double _magBolus=15.e5;
@@ -38,6 +39,10 @@ private:
     double _challengeTime=40.;
     double _deltaBPPercent=0.;  // deltaBPnd in %
     bool _SRTM = false;  // true if 1/k4 is set to zero (k4 = infinity)
+
+    // Where to start
+    bool _startWithPlasma=true;
+    // structure for fitting the RR
     GeneralGLM _glmRR;
 
     // derived quantities //////////////////////////
@@ -73,6 +78,7 @@ private:
     void fitReferenceRegion();
     double baselineBasisFunction(int iPoly, double x);
     double gammaVariateFunction(double time, double onset, double alpha, double tau);
+
 
 public:
     simEngine();
@@ -117,7 +123,9 @@ public:
     inline void setPlasmaPercentTar(double value){_percentPlasmaTar = value;}
     inline void setSamplesPerBin(int lBin, int nSamples)  {_numberSamplesPerBin[lBin] = nSamples; updateFineSamples();}
     inline void setDurationBin(int lBin, int duration) {_durationBinSec[lBin] = duration;         updateFineSamples();}
-    inline void setDurationBins(iVector durationVector)   {_durationBinSec = durationVector;         updateFineSamples();}
+    inline void setDurationBins(iVector durationVector)   {_durationBinSec = durationVector;      updateFineSamples();}
+    inline void setStartWithPlasma() {_startWithPlasma=true;}
+    inline void setStartWithRR()     {_startWithPlasma=false;}
 
     // getters
     inline int getNumberTimeBinsFine()   {return _dtFine.size();}
@@ -149,8 +157,10 @@ public:
     inline double getDurationPerBin(int lBin) {return static_cast<double>(_durationBinSec[lBin])*60.;}
     inline double getDurationPerBinSec(int lBin) {return _durationBinSec[lBin];}
     inline iVector getTimeBinVectorSec()    {return _durationBinSec;}
+    inline double getdtFine(int iTime) {return _dtFine[iTime];}
     inline double getTimeFine(int iTime) {return _timeFine[iTime];}
     inline double getTimeCoarse(int iTime) {return _timeCoarse[iTime];}
+    inline double getdtCoarse(int iTime) {return _dtCoarse[iTime];}
     double getDurationScan();
     double getdk2a();
     double getdk2k3();

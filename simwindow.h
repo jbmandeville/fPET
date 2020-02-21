@@ -7,6 +7,38 @@
 #include "simengine.h"
 #include "petrtm.h"
 
+class Fitter
+{
+private:
+    dVector _RRTimeVector;
+    dVector _RRVector;
+    int _nPoly = 3;
+    int _nPar  = 3;
+    PolynomialGLM _polyPlusGammaForRR; // fit the RR as a polynomial plus a gamma function
+    dVector _gammaParVal;
+    dVector _gammaParInc;
+    bVector _gammaParAdj;
+    bool _optHigh=false;
+
+    inline double getCostFunction() {return _polyPlusGammaForRR.getSigma2();}
+    void lineScan1D( int iPar, double &costRelative, double &incrementOpt );
+    double fitRRComputeCost();
+
+public:
+    void init(dVector RRTimeVector, dVector RRVector);
+    void setPolynomial(int nPoly);
+    void setFitStage(int stage);
+    void fitTAC(double toleranceCost);
+    void fitTau();
+    void fitTauAndOnset();
+    void fitTauAndAlpha();
+
+    // getters
+    inline double getParValue(int iPar) {return _gammaParVal.at(iPar);}
+    inline int getNumberTimeBins() {return _RRTimeVector.size();}
+    inline double getFit(int iTime) {return _polyPlusGammaForRR.getFit(iTime);}
+};
+
 class SimWindow : public QMainWindow
 {
     Q_OBJECT
@@ -32,6 +64,8 @@ private:
     dVector _BP0Vector; // [# BP0 values]
     dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix; // [# BP0 values][nSimulations]
 
+    Fitter _fitRR;
+
     QStringList _validBinSizeName = {"dt","delta-time","delta_time","deltaTime",
                                      "bin-size","bin_size","binSize",
                                      "bin-time","bin_time","binTime",
@@ -49,6 +83,7 @@ private:
     QComboBox *_threadsComboBox;
     QStatusBar *_statusBar;
     QProgressBar *_progressBar;
+    QStatusBar *_plasmaStatusBar;
     QStatusBar *_RRStatusBar;
     QStatusBar *_TRStatusBar;
 
@@ -67,6 +102,7 @@ private:
     plotData *_errBPndOrChallVsTimePlot;
 
     // setup page
+    QComboBox *_whichPlasmaPlot;
     QVBoxLayout *_setupPlotLayout;
     QVBoxLayout *_targetPlotLayout;
     // timing
@@ -96,6 +132,8 @@ private:
     QLineEdit *_plasmaFracRef;
     QLineEdit *_noiseRef;
     QComboBox *_dataRefRegion;
+    QRadioButton *_startWithPlasma;
+    QRadioButton *_startWithRR;
     QPushButton *_calcRRMatch;
     QPushButton *_readROIFile;
     QLabel *_ROIFileName;
@@ -168,12 +206,11 @@ private:
     void createVersusTimePage();
 
     void updatePlasmaGraph();
-    void updateReferenceGraph();
     void updateBasisGraph();
     void updateTargetGraph();
     void enablePlasmaMatching(bool state);
-    void addSimulationCurveRR();
-    void addDataCurveRR();
+    void addSimulationCurveRR(plotData *whichPlot);
+    void addDataCurveRR(plotData *whichPlot);
     void addSimulationCurveTarget();
     void addDataCurveTarget();
     void defineRTMModel();
@@ -208,6 +245,7 @@ private slots:
     inline void changedDataTargetRegion()    {updateAllGraphs();}
     void clickedAnalyzeStimulation(bool state);
     void clickedAnalyzeRealData(bool state);
+    void updateReferenceGraph();
 
     void changedNumberBins();
     void changedBinIndex(int indexPlusOne);
@@ -263,6 +301,8 @@ private slots:
     void getTableDataFile();
     bool defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn);
     bool defineTimeBinsFromTimePoints(QStringList validBinName, int &iColumn);
+
+    void startWithRR(bool state);
 
 public slots:
     void updateLieDetectorProgress(int iProgress);

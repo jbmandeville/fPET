@@ -922,7 +922,10 @@ void plotData::reScaleAxes(QCPRange *xRange, QCPRange *yRange)
 
     if ( yRange->lower ==  1.e10 ) yRange->lower = -10.;
     if ( yRange->upper == -1.e10 ) yRange->upper =  10.;
-    extra = (yRange->upper - yRange->lower) * 0.05;
+    if ( yRange->lower == yRange->upper )
+        extra = yRange->lower * 0.5;
+    else
+        extra = (yRange->upper - yRange->lower) * 0.05;
 //    qDebug() << "rescale" << yRange->lower << yRange->upper << extra;
     yRange->lower -= extra;
     yRange->upper += extra;

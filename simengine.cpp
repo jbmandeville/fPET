@@ -26,7 +26,7 @@ void simEngine::initializeBins()
 }
 void simEngine::updateFineSamples()
 {
-    _dtFine.clear();  _timeFine.clear(); _timeCoarse.clear();
+    _dtFine.clear();  _timeFine.clear(); _timeCoarse.clear();  _dtCoarse.clear();
     double time=0.;
     for (int jBin=0; jBin<_nBins; jBin++)
     {
@@ -42,6 +42,7 @@ void simEngine::updateFineSamples()
         }
         avTime /= static_cast<double>(_numberSamplesPerBin[jBin]);
         _timeCoarse.append(avTime);
+        _dtCoarse.append(dt);
     }
 }
 
@@ -136,6 +137,8 @@ void simEngine::generateReferenceTAC()
 {
     // dCr_dt = K1 * Cp - k2 * Cr;
     // Cp = ( dCr_dt + k2 * Cr) / K1;
+    if ( !_startWithPlasma ) return;
+
     int nTime = _dtFine.size();
     double Cr = 0.;
     _Cr.clear();
@@ -158,6 +161,7 @@ void simEngine::generateReferenceTAC()
 
 void simEngine::generateTargetSRTM()
 {
+    // _startWithPlasma = true
     // dCt_dt = K1 * Cp - k2a * Ct
 
     // Derived quantities: update tissue properties

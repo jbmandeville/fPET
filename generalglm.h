@@ -177,6 +177,8 @@ public:
     void define(int nCoeff, int nTime);         // # coefficiens in polynomial
     void define(int nCoeff, dVector xVector);   // for non-evenly spaced points
 private:
+    double baselineBasisFunction(int iPoly, double x);
+    inline double baselineBasisFunction(int iPoly, int x) {return baselineBasisFunction(iPoly, static_cast<double>(x));}
 };
 
 #endif // GENERALGLM_H
