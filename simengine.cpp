@@ -135,9 +135,10 @@ double simEngine::gammaVariateFunction(double time, double onset, double alpha, 
 
 void simEngine::generateReferenceTAC()
 {
+    FUNC_ENTER << _startWithPlasma << _K1Ref << _k2Ref;
     // dCr_dt = K1 * Cp - k2 * Cr;
     // Cp = ( dCr_dt + k2 * Cr) / K1;
-    if ( !_startWithPlasma ) return;
+    // if ( !_startWithPlasma ) return;
 
     int nTime = _dtFine.size();
     double Cr = 0.;

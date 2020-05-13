@@ -758,7 +758,8 @@ void PolynomialGLM::define(int nCoeff, int nTime)
 
 void PolynomialGLM::define(int nCoeff, dVector xVector)
 { // This defines a simple polynomial GLM for fitting a single scan
-    int nTime = xVector.size();
+    _xInputVector = xVector;
+    int nTime = _xInputVector.size();
     if ( nTime < nCoeff )
       {
         qInfo() << "Error: the # of points (" << nTime << ") must be >= # coefficients" << nCoeff;
@@ -773,20 +774,22 @@ void PolynomialGLM::define(int nCoeff, dVector xVector)
     // Create the basis functions.
     dVector X_t;
     X_t.resize(nTime);
-    double xMin = xVector[0]; double xMax = xVector[nTime-1]; double duration = xMax - xMin;
     for (int jPoly=0; jPoly<nCoeff; jPoly++)
     {
         for ( int jt=0; jt<nTime; jt++ )
-        {
-            double minusOneToOne = 2.*(xVector[jt]-xMin)/duration - 1.;
-            X_t[jt] = baselineBasisFunction(jPoly,minusOneToOne);
-        }
+            X_t[jt] = baselineBasisFunction(jPoly,getNormalizedTime(jt));
         addOrInsertBasisFunction(jPoly,X_t);
     }
     // set uniform weights as default
     dVector weights;  weights.fill(1.,nTime);
     setWeights(weights);
     calculatePseudoInverse();
+}
+double PolynomialGLM::getNormalizedTime(double time)
+{ // convert time (via the index into _xInputVector) to the range (-1,1)
+    double duration = _xInputVector[_xInputVector.size()-1] - _xInputVector[0];  // duration = max - min
+    double minusOneToOne = 2.*(time-_xInputVector[0])/duration - 1.;
+    return minusOneToOne;
 }
 double PolynomialGLM::baselineBasisFunction(int iPoly, double x)
 { // return Legendre polynomial of x with order iPoly
@@ -805,4 +808,32 @@ double PolynomialGLM::baselineBasisFunction(int iPoly, double x)
         value = 0.125 * (63.*x*x*x*x*x - 70.*x*x*x + 15.*x);
     return value;
 }
-
+double PolynomialGLM::getDerivative(double time)
+{ // dBasis/dt = dBasis/dt' * dt'/dt
+    double duration = _xInputVector[_xInputVector.size()-1] - _xInputVector[0];  // duration = max - min
+    double derivative = 0.;
+    for (int jPoly=0; jPoly<_nCoeff; jPoly++)
+    {
+        double polyDeriv = getBasisDerivative(jPoly,getNormalizedTime(time));
+        polyDeriv *= 2./duration * getBeta(jPoly);  // multiply by dt'/dt and fitted coefficient beta
+        derivative += polyDeriv;
+    }
+    return derivative;
+}
+double PolynomialGLM::getBasisDerivative(int iPoly, double x)
+{ // return Legendre polynomial of x with order iPoly
+    double value;
+    if ( iPoly == 0 )
+        value = 0.;
+    else if ( iPoly == 1 )
+        value = 1.;
+    else if ( iPoly == 2 )
+        value = 3*x;
+    else if ( iPoly == 3 )
+        value = 1.5 * (5.*x*x - 1.);
+    else if ( iPoly == 4 )
+        value = 2.5 * (7.*x*x*x - 3.*x);
+    else // if ( iPoly == 5 )
+        value = 1.875 * (21.*x*x*x*x - 14.*x*x + 1.);
+    return value;
+}

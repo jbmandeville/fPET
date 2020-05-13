@@ -7,6 +7,13 @@
 #include "simengine.h"
 #include "petrtm.h"
 
+enum simulationStartingPoints
+{
+    simStart_fromPlasma,
+    simStart_fromPlasmaFit,
+    simStart_fromDataFit
+};
+
 class Fitter
 {
 private:
@@ -19,6 +26,7 @@ private:
     dVector _gammaParInc;
     bVector _gammaParAdj;
     bool _optHigh=false;
+    dVector _fitDerivative;
 
     inline double getCostFunction() {return _polyPlusGammaForRR.getSigma2();}
     void lineScan1D( int iPar, double &costRelative, double &incrementOpt );
@@ -29,13 +37,14 @@ public:
     void setPolynomial(int nPoly);
     void setFitStage(int stage);
     void fitTAC(double toleranceCost);
-    void fitTau();
-    void fitTauAndOnset();
-    void fitTauAndAlpha();
+    void fitGammaFunction(double widthRatio);
+    void computeDerivative();
 
     // getters
+    inline dVector getAllParValues() {return _gammaParVal;}
     inline double getParValue(int iPar) {return _gammaParVal.at(iPar);}
     inline int getNumberTimeBins() {return _RRTimeVector.size();}
+    inline double getTimePoint(int iTime) {return _RRTimeVector[iTime];}
     inline double getFit(int iTime) {return _polyPlusGammaForRR.getFit(iTime);}
 };
 
@@ -132,8 +141,7 @@ private:
     QLineEdit *_plasmaFracRef;
     QLineEdit *_noiseRef;
     QComboBox *_dataRefRegion;
-    QRadioButton *_startWithPlasma;
-    QRadioButton *_startWithRR;
+    QComboBox *_simulationStartingPoint;
     QPushButton *_calcRRMatch;
     QPushButton *_readROIFile;
     QLabel *_ROIFileName;
@@ -209,17 +217,18 @@ private:
     void updateBasisGraph();
     void updateTargetGraph();
     void enablePlasmaMatching(bool state);
-    void addSimulationCurveRR(plotData *whichPlot);
+    void addSimulationRR(plotData *whichPlot);
+    void addFitRR(plotData *whichPlot);
     void addDataCurveRR(plotData *whichPlot);
-    void addSimulationCurveTarget();
+    void addSimulationTarget();
     void addDataCurveTarget();
     void defineRTMModel();
+    void setReferenceRegionForAnalysis();
 
     void scaleSimulationToDataAverage();
     void analyzeTAC();
     QString analyzeString(double truth, double guess);
     inline double percentageError(double guess, double truth) {return 100.*(guess/truth-1.);}
-    double getChallengeMagFromAnalysis();
     double bestTau2RefForRTM2();
     void finishedLieDetectorAllThreads();
     void setThreadVisibility(bool state);
@@ -228,6 +237,12 @@ private:
     void enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool enable);
     inline bool realDataAvailable() {return _dataTable.size() != 0 && _dataRefRegion->count() != 0;}
     inline bool analyzeRealData() {return _analyzeRealData->isChecked();}
+
+    // getters
+    double getChallengeMagFromAnalysis();
+    inline bool simStartsFromPlasma()    {return _simulationStartingPoint->currentIndex() == simStart_fromPlasma;}
+    inline bool simStartsFromPlasmaFit() {return _simulationStartingPoint->currentIndex() == simStart_fromPlasmaFit;}
+    inline bool simStartsFromDataFit()   {return _simulationStartingPoint->currentIndex() == simStart_fromDataFit;}
 
 private slots:
     void exitApp();
@@ -302,7 +317,7 @@ private slots:
     bool defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn);
     bool defineTimeBinsFromTimePoints(QStringList validBinName, int &iColumn);
 
-    void startWithRR(bool state);
+    void changedSimulationStartingPoint();
 
 public slots:
     void updateLieDetectorProgress(int iProgress);

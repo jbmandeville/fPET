@@ -6,6 +6,10 @@
 #include <QProcess>
 #include <QtMath>
 
+#define FUNC_ENTER qDebug() << Q_FUNC_INFO << "enter"
+#define FUNC_EXIT  qDebug() << Q_FUNC_INFO << "exit"
+#define FUNC_INFO  qDebug() << Q_FUNC_INFO
+
 #define PI 3.141592654
 #define PI_180 (PI/180.)
 

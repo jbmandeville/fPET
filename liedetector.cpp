@@ -42,8 +42,8 @@ void lieDetector::run()
             // Perform the analysis
             for (int jt=0; jt<nTime; jt++)
             {
-                refRegion[0][jt]    = _simulator.getCrDown(jt);
-                tissueVector[0][jt] = _simulator.getCtDown(jt);
+                refRegion[0][jt]    = _simulator.getCrCoarse(jt);
+                tissueVector[0][jt] = _simulator.getCtCoarse(jt);
             }
             _PETRTM.setReferenceRegion(refRegion);
             _PETRTM.setTissueVector(tissueVector);

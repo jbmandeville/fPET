@@ -106,7 +106,7 @@ public:
     inline void setTauSlowElim(double value)  {_kSlow = 1./value;}
     inline void setK1Ref(double value)        {_K1Ref = value;}
     inline void setk2Ref(double value)        {_k2Ref = value;}
-    inline void setTau1Ref(double value)      {_K1Ref = 1./value;}
+    inline void setTau1Ref(double value)      {_K1Ref = 1./value; FUNC_INFO << _K1Ref;}
     inline void setTau2Ref(double value)      {_k2Ref = 1./value;}
     inline void setk4(double value)           {_k4 = value;}
     inline void setTau4(double value)         {_k4 = 1./value;}
@@ -175,9 +175,11 @@ public:
     inline double getCp(int iTime)      {return _Cp[iTime];}
     inline double getCr(int iTime)      {return _Cr[iTime];}
     inline double getCt(int iTime)      {return _Ct[iTime];}
-    inline double getCpDown(int iTime)  {return _CpBinned[iTime];}
-    inline double getCrDown(int iTime)  {return _CrBinned[iTime];}
-    inline double getCtDown(int iTime)  {return _CtBinned[iTime];}
+    inline double getCpCoarse(int iTime)  {return _CpBinned[iTime];}
+    inline double getCrCoarse(int iTime)  {return _CrBinned[iTime];}
+    inline double getCtCoarse(int iTime)  {return _CtBinned[iTime];}
+    inline dVector getCrCoarse()     {return _CrBinned;}
+    inline dVector getTimeCourse()   {return _timeCoarse;}
 
 };
 

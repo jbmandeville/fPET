@@ -50,7 +50,6 @@ class GeneralGLM
 
 private:
     int _nTime=0;
-    int _nCoeff=0;
     int _currentCondition=0;
     iVector _nContrasts;     // [nConditions]; = 1 for T test or >= 1 for F test
     QVector<dMatrix> _fCovar;          // [nConditions][nContrasts][nContrasts]
@@ -73,6 +72,7 @@ private:
     double _average=0.;      // average across time course
 
 protected:
+    int _nCoeff=0;
     dMatrix _X_tc;           // Design matrix
     dMatrix _XTWXm1XTW_ct;   // used for Beta = (Xt*W*X)^-1 * Xt * W for either OLS or WLS (weights=1)
     double _sigma2=0.;       // SOS for fit; for 2nd-order GLM, sigma2 is incorporated into weights (=1/sigma2), so set _sigma2=1;
@@ -176,9 +176,14 @@ class PolynomialGLM : public GeneralGLM
 public:
     void define(int nCoeff, int nTime);         // # coefficiens in polynomial
     void define(int nCoeff, dVector xVector);   // for non-evenly spaced points
+    double getNormalizedTime(double time);
+    double getDerivative(double time);
 private:
+    dVector _xInputVector;
     double baselineBasisFunction(int iPoly, double x);
+    inline double getNormalizedTime(int iTime) {return getNormalizedTime(_xInputVector[iTime]);}
     inline double baselineBasisFunction(int iPoly, int x) {return baselineBasisFunction(iPoly, static_cast<double>(x));}
+    double getBasisDerivative(int iPoly, double x);
 };
 
 #endif // GENERALGLM_H
