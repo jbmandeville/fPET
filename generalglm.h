@@ -2,6 +2,7 @@
 #define GENERALGLM_H
 
 #include "io.h"
+#include <QDebug>
 
 enum fMRIEventShapes // used both in fMRI and timePage classes
 {
@@ -138,6 +139,7 @@ public:
     inline double getVar(int iCoeff)    {return _sem_c[iCoeff] * _sem_c[iCoeff];}
     inline double getCovar(int iC1, int iC2) {return _sigma2 * _XTWXm1_cc[iC1][iC2];}
     inline double getDOF()              {return _dof;}
+    inline dVector getFitAll() {return _fit_t;}
     inline double getFit(int iTime)     {return _fit_t[iTime];}
     inline double getFitErr(int iTime)  {return _fitErr_t[iTime];}
     inline double getRegressor(int iCoeff, int iTime) {return _beta_c[iCoeff] * _X_tc[iTime][iCoeff];}
@@ -173,17 +175,48 @@ public:
 ////////////////////////////////// Polynomial GLM //////////////////////////////////
 class PolynomialGLM : public GeneralGLM
 {
-public:
-    void define(int nCoeff, int nTime);         // # coefficiens in polynomial
-    void define(int nCoeff, dVector xVector);   // for non-evenly spaced points
-    double getNormalizedTime(double time);
-    double getDerivative(double time);
 private:
+    int _nPoly;  // usually this is the same as _nCoeff in generalGLM, but it could be different if non-poly basis functions get tacked on
     dVector _xInputVector;
+    int _centralPoint=-1;  // for value >= 0, this is LOESS, and the central point is the point of interest
     double baselineBasisFunction(int iPoly, double x);
-    inline double getNormalizedTime(int iTime) {return getNormalizedTime(_xInputVector[iTime]);}
     inline double baselineBasisFunction(int iPoly, int x) {return baselineBasisFunction(iPoly, static_cast<double>(x));}
     double getBasisDerivative(int iPoly, double x);
+    inline double getNormalizedTime(int iTime) {return getNormalizedTime(_xInputVector[iTime]);}
+    double getNormalizedTime(double time);
+    // most general
+    void define(int nPoly, int nCoeff, dVector xVector, int iCenter);
+public:
+    // polynomial-only entries
+    inline void define (int nCoeff, int nTime)          {define(nCoeff,nCoeff,nTime);}
+    inline void define (int nCoeff, dVector xVector)    {define(nCoeff,nCoeff,xVector);}
+    // allow defining functions that provide for additional coefficients to be added after polynomial terms
+    void define(int nPoly, int nCoeff, int nTime);
+    void define(int nPoly, int nCoeff, dVector xVector);   // for non-evenly spaced points
+    // provide for asymmetric LOESS
+    inline void define(int nCoeff, dVector xVector, int iCenter) {define(nCoeff,nCoeff,xVector,iCenter);}
+    double getDerivative(int iTime);
+    double getDerivative(double time);
+    double getFitInterpolation(double time); // provids a mechanism for getting non-indexed (continuous) fit values
+    inline double getFitAtCentralPoint() {return getFit(_centralPoint);}
+};
+
+////////////////////////////////// LOESS Polynomial vector //////////////////////////////////
+class LOESS
+{
+private:
+    QVector<PolynomialGLM> _polyLOESS;  // vector of [nTime] polynomials, usually of order 3
+    double _smoothingScaleMin;
+    dVector _xPoints;
+
+public:
+    void define(dVector time, double smoothingScaleMin);
+    void defineAndFit(dVector time, dVector yVector, double smoothingScale, bool asymmetric, bool linkWidthToTime);
+    dVector fit(dVector data);
+    double getFitAtCentralPoint(int iTime) {return _polyLOESS[iTime].getFitAtCentralPoint();}
+    double getFirstDerivative(int iTime);
+    double getSecondDerivative(int iTime);
+    double getFitInterpolation(double xBetween);
 };
 
 #endif // GENERALGLM_H

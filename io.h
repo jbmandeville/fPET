@@ -198,6 +198,84 @@ namespace utilIO
     QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
 }
 
+
+namespace tk
+{
+// band matrix solver
+class band_matrix
+{
+private:
+    dMatrix m_upper;  // upper band
+    dMatrix m_lower;  // lower band
+public:
+    // constructors/destructors
+    band_matrix() {};
+    inline band_matrix(int dim, int n_u, int n_l) {resize(dim, n_u, n_l);}
+    ~band_matrix() {};                       // destructor
+    void resize(int dim, int n_u, int n_l);  // init with dim,n_u,n_l
+    inline int dim() const {if ( m_upper.size() > 0) return m_upper[0].size(); else return 0;}
+    int num_upper() const
+    {
+        return m_upper.size()-1;
+    }
+    int num_lower() const
+    {
+        return m_lower.size()-1;
+    }
+    // access operator
+    double & operator () (int i, int j);            // write
+    double   operator () (int i, int j) const;      // read
+    // we can store an additional diogonal (in m_lower)
+    // second diag (used in LU decomposition), saved in m_lower
+    inline double saved_diag(int i) const {Q_ASSERT( (i>=0) && (i<dim()) ); return m_lower[0][i];}
+    inline double &saved_diag(int i) {Q_ASSERT( (i>=0) && (i<dim()) ); return m_lower[0][i];}
+
+    void lu_decompose();
+    dVector r_solve(const dVector& b) const;
+    dVector l_solve(const dVector& b) const;
+    dVector lu_solve(const dVector& b,bool is_lu_decomposed=false);
+};
+
+
+// spline interpolation
+class spline
+{
+public:
+    enum bd_type {
+        first_deriv = 1,
+        second_deriv = 2
+    };
+
+private:
+    dVector m_x,m_y;            // x,y coordinates of points
+    // interpolation parameters
+    // f(x) = a*(x-x_i)^3 + b*(x-x_i)^2 + c*(x-x_i) + y_i
+    dVector m_a,m_b,m_c;        // spline coefficients
+    double  m_b0, m_c0;                     // for left extrapol
+    bd_type m_left, m_right;
+    double  m_left_value, m_right_value;
+    bool    m_force_linear_extrapolation;
+
+public:
+    // set default boundary condition to be zero curvature at both ends
+    spline(): m_left(second_deriv), m_right(second_deriv),
+        m_left_value(0.0), m_right_value(0.0),
+        m_force_linear_extrapolation(false)
+    {
+        ;
+    }
+
+    // optional, but if called it has to come be before set_points()
+    void set_boundary(bd_type left, double left_value,
+                      bd_type right, double right_value,
+                      bool force_linear_extrapolation=false);
+    void set_points(const dVector& x,
+                    const dVector& y, bool cubic_spline=true);
+    double operator() (double x) const;
+};
+
+}
+
 namespace utilMath
 {
 #define SQR(a) ((a) == 0.0 ? 0.0 : (a)*(a))

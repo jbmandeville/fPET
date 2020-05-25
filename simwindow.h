@@ -7,26 +7,18 @@
 #include "simengine.h"
 #include "petrtm.h"
 
-enum simulationStartingPoints
-{
-    simStart_fromPlasma,
-    simStart_fromPlasmaFit,
-    simStart_fromDataFit
-};
-
 class Fitter
 {
 private:
     dVector _RRTimeVector;
     dVector _RRVector;
-    int _nPoly = 3;
+    int _nPoly = 6;
     int _nPar  = 3;
-    PolynomialGLM _polyPlusGammaForRR; // fit the RR as a polynomial plus a gamma function
-    dVector _gammaParVal;
+    PolynomialGLM _polyPlusGammaForRR; // fit the RR as a polynomial plus a gamma function: order = {poly[_nPoly] gamma[1]}
+    dVector _gammaParVal; // parameter values for gamma function (exlude polynomial terms)
     dVector _gammaParInc;
     bVector _gammaParAdj;
     bool _optHigh=false;
-    dVector _fitDerivative;
 
     inline double getCostFunction() {return _polyPlusGammaForRR.getSigma2();}
     void lineScan1D( int iPar, double &costRelative, double &incrementOpt );
@@ -35,17 +27,21 @@ private:
 public:
     void init(dVector RRTimeVector, dVector RRVector);
     void setPolynomial(int nPoly);
-    void setFitStage(int stage);
     void fitTAC(double toleranceCost);
-    void fitGammaFunction(double widthRatio);
-    void computeDerivative();
+    void fitGammaFunctionByGridSearch(double widthRatio);
+    double computeGammaFunction(double time);
+    inline double computeGammaFunction(int iTime) {return computeGammaFunction(_RRTimeVector[iTime]);}
+    double computeGammaFunctionDerivative(double time);
 
     // getters
-    inline dVector getAllParValues() {return _gammaParVal;}
-    inline double getParValue(int iPar) {return _gammaParVal.at(iPar);}
+    inline dVector getAllGammaParValues() {return _gammaParVal;}
     inline int getNumberTimeBins() {return _RRTimeVector.size();}
     inline double getTimePoint(int iTime) {return _RRTimeVector[iTime];}
-    inline double getFit(int iTime) {return _polyPlusGammaForRR.getFit(iTime);}
+    inline double getFit(int iTime)    {return _polyPlusGammaForRR.getFit(iTime);}  // by index
+    inline double getFit(double time)  {return _polyPlusGammaForRR.getFitInterpolation(time);}   // by any value (for interpolation)
+    inline double getFitDerivateive(double time)  {return _polyPlusGammaForRR.getDerivative(time);}   // by any value (for interpolation)
+    inline double getBeta(int iCoeff)  {return _polyPlusGammaForRR.getBeta(iCoeff);} // no error checking on iCoeff!
+    inline int getNumberCoefficients() {return _polyPlusGammaForRR.getNumberCoefficients();}
 };
 
 class SimWindow : public QMainWindow
@@ -73,7 +69,7 @@ private:
     dVector _BP0Vector; // [# BP0 values]
     dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix; // [# BP0 values][nSimulations]
 
-    Fitter _fitRR;
+    LOESS _quadLOESS;
 
     QStringList _validBinSizeName = {"dt","delta-time","delta_time","deltaTime",
                                      "bin-size","bin_size","binSize",
@@ -112,6 +108,7 @@ private:
 
     // setup page
     QComboBox *_whichPlasmaPlot;
+    QCheckBox *_clearPlasmaPlot;
     QVBoxLayout *_setupPlotLayout;
     QVBoxLayout *_targetPlotLayout;
     // timing
@@ -250,7 +247,6 @@ private slots:
     void aboutROI();
     void updateAllGraphs();
     void changedNumberThreads(int indexInBox);
-    void showPlasmaRR();
     void showPlasma();
     void showRR();
     void showBasisTarget();
@@ -312,6 +308,7 @@ private slots:
     void changedTimeHigh();
     void calculateTimeCurves();
     void clearTimeCurves();
+    inline void clearPlasmaPlot(bool isChecked) {if (isChecked) updateAllGraphs();}
 
     void getTableDataFile();
     bool defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn);

@@ -46,10 +46,38 @@ void simEngine::updateFineSamples()
     }
 }
 
+void simEngine::setCrFit(dVector CrFitCoarse, dVector CrFitFine)
+{
+    if ( _nBins != CrFitCoarse.size() )
+    {
+        FUNC_INFO << _nBins << CrFitCoarse.size();
+        qFatal("Error in simEngine::setCrFit - the # of coarse bins should match the # in the fit vector");
+    }
+    else if ( _dtFine.size() != CrFitFine.size() )
+        qFatal("Error in simEngine::setCrFit - the # of fine bins should match the # in the fit vector");
+    _CrFitBinned = CrFitCoarse;
+    _CrFit       = CrFitFine;
+    _CrFitDot.fill(0.,_CrFit.size());
+    // Calculate the derivative
+    for (int jBin=0; jBin<_CrFit.size(); jBin++)
+    {
+        if ( jBin != 0 )
+            _CrFitDot[jBin] = (_CrFit[jBin] - _CrFit[jBin-1]) / _dtFine[jBin];
+//        if ( jBin != 0 && jBin != _CrFit.size()-1 )
+//            _CrFitDot[jBin] = (_CrFit[jBin+1] - _CrFit[jBin-1]) / 2./_dtFine[jBin];
+        else
+            _CrFitDot[jBin] = 0.;
+    }
+}
+
+
 void simEngine::run()
 {
-    generatePlasmaTAC();
-    generateReferenceTAC();
+    if ( _simStartingPoint == simStart_fromPlasma )
+    {
+        generatePlasmaTAC();
+        generateReferenceTAC();
+    }
     generateTargetTAC();
 }
 void simEngine::generateTargetTAC()
@@ -135,14 +163,12 @@ double simEngine::gammaVariateFunction(double time, double onset, double alpha, 
 
 void simEngine::generateReferenceTAC()
 {
-    FUNC_ENTER << _startWithPlasma << _K1Ref << _k2Ref;
     // dCr_dt = K1 * Cp - k2 * Cr;
     // Cp = ( dCr_dt + k2 * Cr) / K1;
-    // if ( !_startWithPlasma ) return;
 
     int nTime = _dtFine.size();
     double Cr = 0.;
-    _Cr.clear();
+    _Cr.clear();  _CrDot.clear();
     for ( int jt=0; jt<nTime; jt++)
     {
         double Cp = _Cp[jt];
@@ -150,6 +176,7 @@ void simEngine::generateReferenceTAC()
         {
             double dCrdt = _K1Ref * Cp - _k2Ref * Cr;
             Cr += dCrdt * _dtFine[jt];
+            _CrDot.append(dCrdt);
         }
         // Cp is conc(tracer)/volume(blood), whereas Cr is conc(tracer)/volume(tissue), so multiple Cp by volume(blood)/volume(tissue)
         _Cr.append(Cr + _percentPlasmaRef/100. * Cp);
@@ -162,7 +189,6 @@ void simEngine::generateReferenceTAC()
 
 void simEngine::generateTargetSRTM()
 {
-    // _startWithPlasma = true
     // dCt_dt = K1 * Cp - k2a * Ct
 
     // Derived quantities: update tissue properties
@@ -182,12 +208,26 @@ void simEngine::generateTargetSRTM()
             double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
             k2a = _k2 / (1. + BP1);
         }
+        dVector Cp;
+        if ( _simStartingPoint == simStart_fromPlasma )
+        {
+            FUNC_INFO << "start from plasma";
+            Cp = _Cp;
+        }
+        else
+        {
+            FUNC_INFO << "start from fit";
+            int nTime = _CrFit.size();
+            Cp.resize(nTime);
+            for ( int jTime=0; jTime<nTime; jTime++ )
+                Cp[jTime] = _k2Ref/_K1Ref * _CrFit[jTime] + _CrFitDot[jTime]/_K1Ref;
+        }
         if ( jt > 0 )
         {
-            double dCtdt = _K1 * _Cp[jt] - k2a * Ct ;
+            double dCtdt = _K1 * Cp[jt] - k2a * Ct ;
             Ct += dCtdt * _dtFine[jt];
         }
-        _Ct.append(Ct + _percentPlasmaTar/100. * _Cp[jt]);
+        _Ct.append(Ct + _percentPlasmaTar/100. * Cp[jt]);
     }
 
     // Downsample the TAC and add Noise
@@ -206,7 +246,7 @@ void simEngine::generateTargetFRTM()
     _k3  = _BP0  * _k4;
 
     double k3=_k3;
-    double Cf=0.;  double Cb=0.;
+    double Cf=0.;  double Cb=0.;  double lastCr=0.;
     int nTime = _dtFine.size();
     _Cf.clear();  _Cb.clear();  _Ct.clear();
     for ( int jt=0; jt<nTime; jt++)
@@ -218,16 +258,24 @@ void simEngine::generateTargetFRTM()
             double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
             k3 = BP1 * _k4;
         }
+        double Cr = _CrFit[jt];
         if ( jt > 0 )
         {
-            double dCfdt = _K1 * _Cp[jt] + _k4 * Cb - (_k2 + k3) * Cf;
+            double dCrdt = (Cr - lastCr)/_dtFine[jt];
+            double dCfdt;
+            if ( _simStartingPoint == simStart_fromPlasma )
+                dCfdt = _K1 * _Cp[jt] + _k4 * Cb - (_k2 + k3) * Cf;
+            else
+                dCfdt = _K1/_K1Ref * ( _k2Ref * _CrFit[jt] + dCrdt) + _k4 * Cb - (_k2 + k3) * Cf;
             double dCbdt = k3 * Cf - _k4 * Cb;
             Cf += dCfdt * _dtFine[jt];
             Cb += dCbdt * _dtFine[jt];
+            lastCr = Cr;
         }
         _Cf.append(Cf);
         _Cb.append(Cb);
         _Ct.append(Cf + Cb + _percentPlasmaTar/100. * _Cp[jt]);
+        lastCr = Cr;
     }
 
     // Downsample the TAC and add Noise

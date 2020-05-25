@@ -85,7 +85,7 @@ int PETRTM::readTimeModel(QString fileName)
         {
             QString smoothingString = stringList.at(1);
             bool ok;
-            _smoothingScale = smoothingString.toDouble(&ok);
+            _smoothingScaleMin = smoothingString.toDouble(&ok);
             if ( !ok )
             {
                 qInfo() << "Error reading the value for the smoothing string:" << smoothingString;
@@ -1233,8 +1233,8 @@ void PETRTM::setTissueVector(dMatrix tissueRegion)
     _tissRegionRaw = tissueRegion;
     _tissRegion    = tissueRegion;
 
-    if ( _smoothingScale != 0. )
-        fitLoessCurve(_tissRegion);  // xxx
+    if ( _smoothingScaleMin != 0. )
+        fitLoessCurve(_tissRegion);  // this replaces the tissue region with the fit
     _tissRegionDeriv = _tissRegion;  // this ensure dimensions are correct
     if ( (isFRTM() && _tau4Default != 0.) || _PETWeightingModel == Weights_noUptake )
         differentiateByRun(_tissRegionDeriv); // rFRTM requires a tissue derivative for the convolution term
@@ -1486,7 +1486,7 @@ void PETRTM::setReferenceRegion(dMatrix referenceRegionRaw)
 void PETRTM::updateReferenceRegion()
 {
     _refRegion = _refRegionRaw;
-    if ( _smoothingScale != 0. )
+    if ( _smoothingScaleMin != 0. )
         fitLoessCurve(_refRegion);
     _refRegionIntegral = _refRegion;
     _refRegionDeriv    = _refRegion;
@@ -1969,65 +1969,12 @@ int PETRTM::readTimeBinsFile(int iRun, QString fileName)
         timeBinsSec[jt] = static_cast<int>(_table[iRun][jt][0]);
     setTimeBinsSec(iRun,timeBinsSec);
 
-    if ( _smoothingScale != 0. )
-        defineLOESSFitting(iRun);
+    if ( _smoothingScaleMin != 0. )
+        _quadLOESS[iRun].define(_timeInRun[iRun],_smoothingScaleMin);
 
     setPrepared(false);
 
     return(0);
-}
-
-void PETRTM::defineLOESSFitting(int iRun)
-{
-    // Define local quadratic smoothing for each this run: (one function for each time point)
-    int nTimeInRun = _dtBinsSec[iRun].size();
-    _quadLOESS[iRun].resize(nTimeInRun);
-    for ( int jt=0; jt<nTimeInRun; jt++)
-    {
-//        double time0 = getTimeInRun(iRun,jt);
-        double time0 = _timeInRun[iRun][jt];
-        double halfWidth = _smoothingScale;
-        int iLowSide=0;  double time = time0;  double width=0.;  double maxWidth=0.;
-        while ( jt - iLowSide >= 0 && width < halfWidth )
-        {
-//            time = getTimeInRun(iRun,jt-iLowSide);
-            time = _timeInRun[iRun][jt-iLowSide];
-            width = qAbs(time-time0);
-            if ( width > maxWidth ) maxWidth = width;
-            iLowSide++;
-        }
-        iLowSide--;
-        int iHighSide=0;  time = time0;  width = 0.;
-        while ( jt + iHighSide < nTimeInRun && width < halfWidth )
-        {
-//            time = getTimeInRun(iRun,jt+iHighSide);
-            time = _timeInRun[iRun][jt+iHighSide];
-            width = qAbs(time-time0);
-            if ( width > maxWidth ) maxWidth = width;
-            iHighSide++;
-        }
-        iHighSide--;
-        // Set weights
-        dVector weight;  weight.clear();
-        int iHalfWidth = qMax(1,qMin(iLowSide,iHighSide));
-        for ( int jRel=-iHalfWidth; jRel<=iHalfWidth; jRel++ )
-        {
-            int iTime = jt + jRel;
-            if ( iTime >= 0 && iTime < nTimeInRun )
-            {
-//                time = getTimeInRun(iRun,iTime);
-                time = _timeInRun[iRun][iTime];
-                width = qAbs(time-time0);
-                double distance = width / maxWidth;  // maxWidth > 0 always
-                if ( distance < 1. )
-                    weight.append(qPow(1-qPow(distance,3),3));
-            }
-        }
-        // define (nCoeff, nTimeInRun)
-        _quadLOESS[iRun][jt].define(qMin(weight.size(),3),weight.size());  // qMax: don't define 3 terms with only 2 points
-        _quadLOESS[iRun][jt].setWeights(weight);
-    }
-
 }
 
 void PETRTM::saveTimeModelFiles(QString dirName, QStringList dataFileList)
@@ -2062,8 +2009,8 @@ void PETRTM::saveTimeModelFiles(QString dirName, QStringList dataFileList)
         out << "brain-region " << _brainRegionName << "\n";
 
     // Smoothing scale
-    if ( _smoothingScale != 0. )
-        out << "smoothing-scale " << _smoothingScale << "\n";
+    if ( _smoothingScaleMin != 0. )
+        out << "smoothing-scale " << _smoothingScaleMin << "\n";
 
     // weighting model
     if ( _PETWeightingModel == Weights_11C )
@@ -2338,8 +2285,6 @@ void PETRTM::setNumberTimePointsInRun(int iRun, int nTime)
             _dtBinsSec[iRun].append(60);
             _table[iRun][jt].append(60.);  // initialize time bin widths (1st column=frames) to 1.
         }
-        _quadLOESS[iRun].resize(nTime);
-
         _dCrdtEventCoefficient.fill(-1,nTime);
         _refRegion[iRun].fill(0.,nTime);
         _refRegionRaw[iRun].fill(0.,nTime);
@@ -3244,7 +3189,7 @@ void PETRTM::calculateFRTMConvolution()
     } // jRun
 
     _frtmConv_dCtdtE = _frtmConv_dCtdtERaw;
-    if ( _smoothingScale != 0. )
+    if ( _smoothingScaleMin != 0. )
         // Potentially smooth the convolution to reduce noise
         fitLoessCurve(_frtmConv_dCtdtE);  // additional smoothing xxx
 }
@@ -3296,39 +3241,24 @@ void PETRTM::calculateBPndOrK4ForIteration()
     }
 }
 
-void PETRTM::setSmoothingScale(double smoothingScale)
+void PETRTM::setSmoothingScaleMin(double smoothingScale)
 {
-    _smoothingScale = smoothingScale;
-    if ( _smoothingScale != 0. )
+    _smoothingScaleMin = smoothingScale;
+    if ( _smoothingScaleMin != 0. )
     {
         for ( int jRun=0; jRun<_nRuns; jRun++ )
-            defineLOESSFitting(jRun);
+            _quadLOESS[jRun].define(_timeInRun[jRun],_smoothingScaleMin);
     }
     updateReferenceRegion();
 }
 
 void PETRTM::fitLoessCurve(dMatrix &runData)
 {
-    dMatrix originalData = runData;
-
     for (int jRun=0; jRun<_nRuns; jRun++)
     {
+        dVector fit = _quadLOESS[jRun].fit(runData[jRun]);
         for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
-        {
-            int iFullWidth = _quadLOESS[jRun][jt].getNumberTimePoints();
-            int iHalfWidth = iFullWidth/2;
-            dVector localData;  localData.resize(iFullWidth);
-            for ( int jRel=-iHalfWidth; jRel<=iHalfWidth; jRel++ )
-            {
-                int iTime = jt + jRel;
-                if ( iTime >= 0 && iTime <_dtBinsSec[jRun].size() )
-                    localData[jRel+iHalfWidth] = originalData[jRun][iTime];
-                else
-                    localData[jRel+iHalfWidth] = 0.;  // should also have weight=0.
-                _quadLOESS[jRun][jt].fitWLS(localData,true);
-                runData[jRun][jt] = _quadLOESS[jRun][jt].getFit(iHalfWidth);
-            }
-        }
+            runData[jRun][jt] = _quadLOESS[jRun].getFitAtCentralPoint(jt);
     }
 }
 

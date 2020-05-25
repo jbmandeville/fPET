@@ -197,6 +197,7 @@ void SimWindow::getTableDataFile()
 
             // enable fitting of real data
             enableComboBoxItem(_simulationStartingPoint,simStart_fromDataFit,true);
+            _simulationStartingPoint->setCurrentIndex(simStart_fromDataFit);
         }
     }
 }
@@ -506,8 +507,8 @@ void SimWindow::createSetupPage()
     separator2->setLineWidth(3);
     separator2->setFrameShadow(QFrame::Raised);
     QLabel *showLabel = new QLabel("show:",_setupPage);
-    auto *radioShowPlasma    = new QRadioButton("Simulations",_setupPage);
-    auto *radioShowRR        = new QRadioButton("RR: Data/Sim",_setupPage);
+    auto *radioShowPlasma    = new QRadioButton("All",_setupPage);
+    auto *radioShowRR        = new QRadioButton("Ref Region",_setupPage);
     radioShowRR->setChecked(true);
 
     _whichPlasmaPlot  = new QComboBox();
@@ -517,13 +518,26 @@ void SimWindow::createSetupPage()
     _whichPlasmaPlot->addItem("Cp (fine)   "); // 3
     _whichPlasmaPlot->addItem("dt (coarse) "); // 4
     _whichPlasmaPlot->addItem("dt (fine)   "); // 5
+    _whichPlasmaPlot->addItem("Cr_fit (coarse)");   // 6
+    _whichPlasmaPlot->addItem("Cr_fit (fine)");     // 7
+    _whichPlasmaPlot->addItem("dCr_fit/dt (fine)"); // 8
+    _whichPlasmaPlot->addItem("dCr/dt (fine)");     // 9
     _whichPlasmaPlot->setCurrentIndex(0);
-    _whichPlasmaPlot->setVisible(true);
+    _whichPlasmaPlot->setVisible(false);
+    enableComboBoxItem(_whichPlasmaPlot,6,false);
+    enableComboBoxItem(_whichPlasmaPlot,7,false);
+    enableComboBoxItem(_whichPlasmaPlot,8,false);
+
+    _clearPlasmaPlot = new QCheckBox("refresh plot");
+    _clearPlasmaPlot->setChecked(true);
+    _clearPlasmaPlot->setVisible(false);
+    connect(_clearPlasmaPlot, SIGNAL(toggled(bool)), this, SLOT(clearPlasmaPlot(bool)));
 
     auto *showWidget = new QWidget();
     auto *showHBoxLayout = new QHBoxLayout();
     showHBoxLayout->addWidget(showLabel);
     showHBoxLayout->addWidget(_whichPlasmaPlot);
+    showHBoxLayout->addWidget(_clearPlasmaPlot);
     showHBoxLayout->addWidget(radioShowPlasma);
     showHBoxLayout->addWidget(radioShowRR);
     showWidget->setLayout(showHBoxLayout);
@@ -554,7 +568,6 @@ void SimWindow::createSetupPage()
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _RRPlot, SLOT(setSelectPoints()));
 //    connect(crossCursorAct,  SIGNAL(triggered(bool)), _RRPlot, SLOT(setSelectPoints()));
 
-//    connect(radioShowPlasmaRR, SIGNAL(clicked(bool)), this, SLOT(showPlasmaRR()));
     connect(radioShowPlasma,   SIGNAL(clicked(bool)), this, SLOT(showPlasma()));
     connect(radioShowRR,       SIGNAL(clicked(bool)), this, SLOT(showRR()));
 
@@ -574,26 +587,44 @@ void SimWindow::createSetupPage()
     _setupPage->setLayout(fullLayout);
 }
 
-
 void SimWindow::changedSimulationStartingPoint()
 { // 0) from plasma  1) fit plasma  2) fit data
     FUNC_ENTER;
     if ( !simStartsFromPlasma() )
     {
+//        _PETRTM.setSmoothingScaleMin(0.5);
         dVector RRTimeVector = _simulator.getTimeCourse();
         dVector RRVector;
         if ( simStartsFromDataFit() )
             RRVector = _dataTable[_dataRefRegion->currentIndex()];
         else if ( simStartsFromPlasmaFit() )
-            RRVector     = _simulator.getCrCoarse();
-        _fitRR.init(RRTimeVector, RRVector);
-        _fitRR.setPolynomial(6);
-        _fitRR.fitGammaFunction(1.);
-        _fitRR.fitGammaFunction(2.);
-        _fitRR.fitGammaFunction(4.);
-        _fitRR.computeDerivative();
-        FUNC_INFO << _fitRR.getAllParValues();
+            RRVector = _simulator.getCrCoarse();
+        // LOESS: coarse (binned) RR
+        double smoothingScale = 0.5;
+        _quadLOESS.defineAndFit(RRTimeVector,RRVector, smoothingScale, true, true);
+        dVector CrFitCoarse, deriv2;
+        for (int jTime=0; jTime<_simulator.getNumberTimeBinsCoarse(); jTime++)
+            CrFitCoarse.append(_quadLOESS.getFitAtCentralPoint(jTime));
+
+        tk::spline spline;
+        spline.set_points(RRTimeVector,CrFitCoarse);    // currently it is required that X is already sorted
+
+        // LOESS: fine
+        int nTimeFine = _simulator.getNumberTimeBinsFine();
+        RRTimeVector.resize(nTimeFine);
+        for (int jTime=0; jTime<nTimeFine; jTime++)
+            RRTimeVector[jTime] = _simulator.getTimeFine(jTime);
+        dVector CrFitFine;
+        for (int jTime=0; jTime<nTimeFine; jTime++)
+            CrFitFine.append(qMax(0.,spline(RRTimeVector[jTime])));
+        _simulator.setCrFit(CrFitCoarse, CrFitFine);
+
+        enableComboBoxItem(_whichPlasmaPlot,6,true);
+        enableComboBoxItem(_whichPlasmaPlot,7,true);
+        enableComboBoxItem(_whichPlasmaPlot,8,true);
     }
+    simulationStartingPoint startingPoint = static_cast<simulationStartingPoint>(_simulationStartingPoint->currentIndex());
+    _simulator.setSimulationStartingPoint(startingPoint);
     updateAllGraphs();
 }
 
@@ -601,10 +632,23 @@ void SimWindow::enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool ena
 {
     QStandardItemModel* model = qobject_cast<QStandardItemModel*>(comboBox->model());
     QStandardItem* item= model->item(itemNumber);
+    int nItems = comboBox->count();
+    QVariant backgroundColor;  // setting default background color only works if at least 1 item is enabled!!
+    for (int j=0; j<nItems; j++)
+    {
+        QStandardItem *thisItem = model->item(j);
+        if ( thisItem->isEnabled() ) backgroundColor = comboBox->itemData(j,Qt::BackgroundRole);
+    }
     if ( enable )
+    {
         item->setFlags(item->flags() | Qt::ItemIsEnabled);   // enable
+        comboBox->setItemData(itemNumber,backgroundColor,Qt::BackgroundRole);
+    }
     else
+    {
         item->setFlags(item->flags() & ~Qt::ItemIsEnabled);  // disable
+        comboBox->setItemData(itemNumber,QColor(Qt::lightGray),Qt::BackgroundRole);
+    }
 }
 void SimWindow::calculateRRMatch()
 {
@@ -1174,8 +1218,16 @@ void SimWindow::setReferenceRegionForAnalysis()
         timeBinsSec[0] = _simulator.getTimeBinVectorSec();
         dMatrix refRegion; refRegion.resize(1);
         refRegion[0].resize(nTime);
-        for (int jt=0; jt<nTime; jt++)
-            refRegion[0][jt] = _simulator.getCrCoarse(jt);
+        if ( simStartsFromPlasma() )
+        {
+            for (int jt=0; jt<nTime; jt++)
+                refRegion[0][jt] = _simulator.getCrCoarse(jt);
+        }
+        else
+        {
+            for (int jt=0; jt<nTime; jt++)
+                refRegion[0][jt] = _simulator.getCrFitBinned(jt);
+        }
         _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
 }
@@ -1276,21 +1328,14 @@ void SimWindow::createVersusTimePage()
 
 }
 
-void SimWindow::showPlasmaRR()
-{
-    _plasmaPlot->getPlotSurface()->setVisible(true);
-    _plasmaStatusBar->setVisible(true);
-    _RRPlot->getPlotSurface()->setVisible(true);
-    _whichPlasmaPlot->setEnabled(true);
-//    _RRStatusBar->setVisible(true);
-}
 void SimWindow::showPlasma()
 {
     _plasmaPlot->getPlotSurface()->setVisible(true);
     _plasmaStatusBar->setVisible(true);
     _RRPlot->getPlotSurface()->setVisible(false);
     _RRStatusBar->setVisible(false);
-    _whichPlasmaPlot->setEnabled(true);
+    _whichPlasmaPlot->setVisible(true);
+    _clearPlasmaPlot->setVisible(true);
 }
 void SimWindow::showRR()
 {
@@ -1298,7 +1343,8 @@ void SimWindow::showRR()
     _plasmaStatusBar->setVisible(false);
     _RRPlot->getPlotSurface()->setVisible(true);
     _RRStatusBar->setVisible(true);
-    _whichPlasmaPlot->setEnabled(false);
+    _whichPlasmaPlot->setVisible(false);
+    _clearPlasmaPlot->setVisible(false);
 }
 void SimWindow::showBasisTarget()
 {
@@ -1315,42 +1361,19 @@ void SimWindow::showTarget()
     _basisPlot->getPlotSurface()->setVisible(false);
     _targetPlot->getPlotSurface()->setVisible(true);
 }
-/*
-void SimWindow::updatePlasmaGraph()
-{
-    // update the plot
-    _plasmaPlot->init();
-    _plasmaPlot->setLegendOn(true);
-    _plasmaPlot->addCurve(0,"plasma");
-    _plasmaPlot->setColor(Qt::red);
-    int nTime = _simulator.getNumberTimeBinsFine();
-    dVector xTime; xTime.resize(nTime);
-    dVector yTAC;  yTAC.resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
-    {
-        xTime[jt] = _simulator.getTimeFine(jt);
-        yTAC[jt]  = _simulator.getCp(jt);
-    }
-    _plasmaPlot->setData(xTime,yTAC);
-
-    // update the plot: RR
-    _plasmaPlot->addCurve(0,"RR");
-    for (int jt=0; jt<nTime; jt++)
-        yTAC[jt] = _simulator.getCr(jt);
-    _plasmaPlot->setData(xTime,yTAC);
-
-    _plasmaPlot->conclude(0,true);
-    _plasmaPlot->plotDataAndFit(true);
-}
-*/
 
 void SimWindow::updatePlasmaGraph()
 {
+    static int whichColor=0;
+    QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
+                         Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
+
     int index = _whichPlasmaPlot->currentIndex();
-    bool fineScale = (index == 2) || (index == 3) || (index == 5);
+    bool fineScale = (index == 2) || (index == 3) || (index == 5) || (index == 7) || (index == 8) || (index==9);
 
     // update the plot: RR
-    _plasmaPlot->init();
+    if ( _clearPlasmaPlot->isChecked() )
+        _plasmaPlot->init();
     _plasmaPlot->setLegendOn(true);
     if ( index != 0 )
         _plasmaPlot->addCurve(0,_whichPlasmaPlot->currentText());
@@ -1374,28 +1397,41 @@ void SimWindow::updatePlasmaGraph()
                 yTAC[jt]  = _simulator.getCr(jt);
             else if ( index == 3 )
                 yTAC[jt]  = _simulator.getCp(jt);
-            else
+            else if ( index == 5 )
                 yTAC[jt]  = _simulator.getdtFine(jt);
+            else if ( index == 7 )
+                yTAC[jt]  = _simulator.getCrFit(jt);
+            else if ( index == 8 )
+                yTAC[jt]  = _simulator.getCrFitDot(jt);
+            else if ( index == 9 )
+                yTAC[jt]  = _simulator.getCrDot(jt);
         }
         _plasmaPlot->setData(xTime,yTAC);
     }
     else
     { // Cp or dt in coarse units
+        index = _whichPlasmaPlot->currentIndex();
         int nTime = _simulator.getNumberTimeBinsCoarse();
         dVector xTime; xTime.resize(nTime);
         dVector yTAC;  yTAC.resize(nTime);
         for (int jt=0; jt<nTime; jt++)
         {
             xTime[jt] = _simulator.getTimeCoarse(jt);
-            if ( _whichPlasmaPlot->currentIndex() == 1 )
+            if ( index == 1 )
                 yTAC[jt] = _simulator.getCpCoarse(jt);
-            else
+            else if ( index == 4 )
                 yTAC[jt]  = _simulator.getdtCoarse(jt);
+            else if ( index == 6 )
+                yTAC[jt]  = _simulator.getCrFitBinned(jt);
         }
         _plasmaPlot->setData(xTime,yTAC);
     }
 
-    _plasmaPlot->setColor(Qt::black);
+    if ( _clearPlasmaPlot->isChecked() || whichColor > 9 )
+        whichColor = 0;
+    FUNC_INFO << "which color" << whichColor;
+    _plasmaPlot->setColor(colors[whichColor]);
+    whichColor++;
     if ( fineScale )
         _plasmaPlot->setPointSize(2);
     else
@@ -1443,17 +1479,17 @@ void SimWindow::addFitRR(plotData *whichPlot)
 {
     whichPlot->addCurve(0,"RR: fit");
     if ( whichPlot->getNumberCurves() == 1 )
-        whichPlot->setColor(Qt::red); // 1st curve
+        whichPlot->setColor(Qt::red); // 1st curve is red
     else
-        whichPlot->setColor(Qt::gray);
+        whichPlot->setColor(Qt::gray); // 2nd curve is gray
     whichPlot->setPointSize(2);
-    int nTimeSim = _fitRR.getNumberTimeBins();
+    int nTimeSim = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTimeSim);
     dVector yTAC;    yTAC.resize(nTimeSim);
     for (int jt=0; jt<nTimeSim; jt++)
     {
-        xTime[jt] = _fitRR.getTimePoint(jt);
-        yTAC[jt] = _fitRR.getFit(jt);
+        xTime[jt] = _simulator.getTimeCoarse(jt);
+        yTAC[jt]  = _quadLOESS.getFitAtCentralPoint(jt);
     }
     whichPlot->setData(xTime,yTAC);
 }
@@ -2779,16 +2815,16 @@ void SimWindow::finishedLieDetectorAllThreads()
 
 void Fitter::init(dVector RRTimeVector, dVector RRVector)
 {
+    FUNC_ENTER << RRTimeVector;
     _RRTimeVector   = RRTimeVector;
     _RRVector       = RRVector;
     // define a polynomial based upon the RR bins, which may be unevenly spaced
-    _polyPlusGammaForRR.define(_nPoly,_RRTimeVector);
+    _polyPlusGammaForRR.define(_nPoly, _nPoly+1,_RRTimeVector); // extra basis function is gamma-variate
     int nTime = _RRTimeVector.size();
-    _fitDerivative.fill(0.,nTime);
     // Now add a gamma basis function, with variable parameters 1) onset time, 2) alpha, 3) tau
     // find starting point for tau
     double rrMaxTime = 0.;   double rrMaxValue = 0.;
-    for (int jt=0; jt<_RRTimeVector.size(); jt++)
+    for (int jt=0; jt<nTime; jt++)
     {
         if ( _RRVector[jt] > rrMaxValue )
         {
@@ -2797,98 +2833,58 @@ void Fitter::init(dVector RRTimeVector, dVector RRVector)
         }
     }
     double tau = rrMaxTime;  double onsetTime = 0;  double alpha = 1.;
+    FUNC_INFO << "set tau guess to " << tau;
     _gammaParVal.resize(_nPar);     _gammaParInc.resize(_nPar);     _gammaParAdj.resize(_nPar);
     _gammaParVal[0] = onsetTime;    _gammaParVal[1] = alpha;        _gammaParVal[2] = tau;
     _gammaParInc[0] = 0.5;          _gammaParInc[1] = alpha/10.;    _gammaParInc[2] = tau/10.;
     _gammaParAdj[0] = true;         _gammaParAdj[1] = true;         _gammaParAdj[2] = true;
-    double costInit = fitRRComputeCost();
-}
-
-void Fitter::setFitStage(int stage)
-{
-    _gammaParAdj[0] = _gammaParAdj[1] = _gammaParAdj[2] = false;
-    if ( stage == 0 )
-    {
-        _gammaParAdj[2] = true; // adjust tau
-        setPolynomial(3);
-    }
-    else if ( stage == 1 )
-    {
-        _gammaParAdj[0] = _gammaParAdj[2] = true; // adjust onset and tau
-        setPolynomial(3);
-    }
-    else if ( stage == 2 )
-    {
-        _gammaParAdj[1] = _gammaParAdj[2] = true; // adjust alpha and tau
-        setPolynomial(3);
-    }
-    else if ( stage == 3)
-    {
-        _gammaParAdj[0] = _gammaParAdj[1] = _gammaParAdj[2] = true;  // adjust everything
-        setPolynomial(3);
-    }
-    else
-    {
-        _gammaParAdj[0] = _gammaParAdj[1] = _gammaParAdj[2] = true;   // adjust everything
-        setPolynomial(6);
-    }
 }
 
 void Fitter::setPolynomial(int nPoly)
 { // only call this this function AFTER initializing the RR
     _nPoly = nPoly;
     // define a polynomial based upon the RR bins, which may be unevenly spaced
-    _polyPlusGammaForRR.define(_nPoly,_RRTimeVector);
-    _gammaParInc[0] = 0.5;          _gammaParInc[1] = _gammaParVal[1]/10.;    _gammaParInc[2] = _gammaParVal[2]/10.;
-    double costInit = fitRRComputeCost();
+    _polyPlusGammaForRR.define(_nPoly,_nPoly+1,_RRTimeVector);   // extra basis function is gamma-variate
+    _gammaParInc[0] = 0.5;
+    _gammaParInc[1] = _gammaParVal[1]/10.;
+    _gammaParInc[2] = _gammaParVal[2]/10.;
 }
 
-double Fitter::fitRRComputeCost()
-{ // fit RR by GLM and compute sigma2
+double Fitter::computeGammaFunction(double time)
+{
+    // gamma(x) = x^alpha * exp*(alpha(1-x))
     double onsetTime = _gammaParVal.at(0);
     double alpha     = _gammaParVal.at(1);
     double tau       = _gammaParVal.at(2);
+    double t = (time - onsetTime) / tau;
+    double gammaValue=0.;
+    if ( t > 0. )
+        gammaValue = qPow(t,alpha) * qExp(alpha*(1.-t));
+    return gammaValue;
+}
+double Fitter::computeGammaFunctionDerivative(double time)
+{
+    double onsetTime = _gammaParVal.at(0);
+    double alpha     = _gammaParVal.at(1);
+    double tau       = _gammaParVal.at(2);
+    double t = (time - onsetTime) / tau;
+    double gammaDerivative=0.;
+    if ( t > 0. )
+        gammaDerivative = alpha/tau * qPow(t,alpha-1.) * qExp(alpha*(1.-t)) * (1.-t);
+    return gammaDerivative;
+}
+double Fitter::fitRRComputeCost()
+{ // fit RR by GLM and compute sigma2
     // get the RR time vector (x, not y)
     dVector gammaBasis;  gammaBasis.fill(0.,_RRTimeVector.size());
     for (int jt=0; jt<_RRTimeVector.size(); jt++)
-    {
-        double time = _RRTimeVector[jt];
-        time = jt;
-        double t = (time - onsetTime) / tau;
-        if ( t > 0. ) gammaBasis[jt] = qPow(t,alpha) * qExp(alpha*(1.-t));
-    }
+        gammaBasis[jt] = computeGammaFunction(jt);
     _polyPlusGammaForRR.addOrInsertBasisFunction(_nPoly,gammaBasis);
     // The basis functions are complete
     _polyPlusGammaForRR.fitWLS(_RRVector,true);
     double cost = getCostFunction();
     return cost;
 }
-
-void Fitter::computeDerivative()
-{
-    // f = polynomial + gamma(x) = polynomial + x^alpha * exp*(alpha(1-x))
-    // with x = (t-t0)/tau
-    // df/x = alpha * x^(alpha-1) * exp(alpha(1-x)) - alpha * (x^alpha) * exp(alpha(1-x))
-    //        = alpha * x^(alpha-1) * exp(alpha(1-x) * ( 1 - x)
-    // dx/dt = 1/tau
-    // df/dt = df/x * dx/dt = alpha/tau * x^(alpha-1) * exp(alpha(1-x) * ( 1 - x)
-    int nTime  = _RRTimeVector.size();
-    _fitDerivative.fill(0.,nTime);
-    // first compute the polynomial part
-    for (int jt=0; jt<_RRTimeVector.size(); jt++)
-        _fitDerivative[jt] = _polyPlusGammaForRR.getDerivative(_RRTimeVector[jt]);
-    double onsetTime = _gammaParVal.at(0);
-    double alpha     = _gammaParVal.at(1);
-    double tau       = _gammaParVal.at(2);
-    // Now tack on the gamma part
-    for (int jt=0; jt<_RRTimeVector.size(); jt++)
-    {
-        double time = _RRTimeVector[jt];
-        double x = (time-onsetTime)/tau;
-        _fitDerivative[jt] += alpha/tau * qPow(x,alpha-1.) * qExp(alpha*(1.-x)) * (1.-x) * _polyPlusGammaForRR.getBeta(_nPoly);
-    }
-}
-
 void Fitter::fitTAC(double toleranceCost) // toleranceCost is a fraction (e.g., 0.01 is 1%)
 {
     int iCount = 0;
@@ -3026,8 +3022,9 @@ void Fitter::lineScan1D( int iPar, double &costRelative, double &incrementOpt )
     return;
 }
 
-void Fitter::fitGammaFunction(double widthRatio)
+void Fitter::fitGammaFunctionByGridSearch(double widthRatio)
 {
+    FUNC_ENTER;
     // Fit a gamma function plus a polynomial by repeated GLM using a grid search for the best gamma parameters (3)
     double onset = _gammaParVal.at(0);
     double alpha = _gammaParVal.at(1);
@@ -3049,7 +3046,7 @@ void Fitter::fitGammaFunction(double widthRatio)
         for ( alpha=alphaStart; alpha<alphaStop; alpha+=alphaStep)
         {
             _gammaParVal[1] = qMax(alpha,0.01);
-            for ( tau=tauStart; tau<tauStop; tau+=tauStep)
+            for ( tau=qMax(tauStart,0.1); tau<tauStop; tau+=tauStep)
             {
                 _gammaParVal[2] = tau;
                 double sigma2 = fitRRComputeCost();
@@ -3062,6 +3059,6 @@ void Fitter::fitGammaFunction(double widthRatio)
         }
     }
     _gammaParVal = bestGammaParVal;
-    FUNC_EXIT << _gammaParVal;
     fitRRComputeCost();
+    FUNC_INFO << "gammaParVal" << _gammaParVal;
 }

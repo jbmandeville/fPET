@@ -6,6 +6,13 @@
 #include "io.h"
 #include "generalglm.h"
 
+enum simulationStartingPoint
+{
+    simStart_fromPlasma,
+    simStart_fromPlasmaFit,
+    simStart_fromDataFit
+};
+
 class simEngine
 {
 private:
@@ -18,6 +25,8 @@ private:
     dVector _timeFine;        // [sum of _numberSamplesPerBin = # of fine bins]
     dVector _dtCoarse;        // [_nBins]
     dVector _timeCoarse;      // [_nBins]
+    // starting point: plasma or RR
+    simulationStartingPoint _simStartingPoint=simStart_fromPlasma;
     // Infusion
     double _magBolus=15.e5;
     double _tauBolus=0.25;
@@ -41,7 +50,9 @@ private:
     bool _SRTM = false;  // true if 1/k4 is set to zero (k4 = infinity)
 
     // Where to start
-    bool _startWithPlasma=true;
+    dVector _CrFitBinned;  // the actual fit to Cr
+    dVector _CrFit;        // fine samples of the fit value above
+    dVector _CrFitDot;     // derivative of _CrFit
     // structure for fitting the RR
     GeneralGLM _glmRR;
 
@@ -59,6 +70,7 @@ private:
     dVector _Cf;
     dVector _Cb;
     dVector _Ct;
+    dVector _CrDot;  // save for comparison with _CrFitDot
 
     // DownSampled vectors
     dVector _CpBinned;
@@ -124,8 +136,9 @@ public:
     inline void setSamplesPerBin(int lBin, int nSamples)  {_numberSamplesPerBin[lBin] = nSamples; updateFineSamples();}
     inline void setDurationBin(int lBin, int duration) {_durationBinSec[lBin] = duration;         updateFineSamples();}
     inline void setDurationBins(iVector durationVector)   {_durationBinSec = durationVector;      updateFineSamples();}
-    inline void setStartWithPlasma() {_startWithPlasma=true;}
-    inline void setStartWithRR()     {_startWithPlasma=false;}
+    inline void setSimulationStartingPoint(simulationStartingPoint startingPoint) {_simStartingPoint = startingPoint;}
+
+    void setCrFit(dVector CrFitCoarse, dVector CrFitFine);
 
     // getters
     inline int getNumberTimeBinsFine()   {return _dtFine.size();}
@@ -175,11 +188,17 @@ public:
     inline double getCp(int iTime)      {return _Cp[iTime];}
     inline double getCr(int iTime)      {return _Cr[iTime];}
     inline double getCt(int iTime)      {return _Ct[iTime];}
+    inline double getCrDot(int iTime)    {return _CrDot[iTime];}
     inline double getCpCoarse(int iTime)  {return _CpBinned[iTime];}
     inline double getCrCoarse(int iTime)  {return _CrBinned[iTime];}
     inline double getCtCoarse(int iTime)  {return _CtBinned[iTime];}
     inline dVector getCrCoarse()     {return _CrBinned;}
     inline dVector getTimeCourse()   {return _timeCoarse;}
+
+    // fit
+    inline double getCrFitBinned(int iTime) {return _CrFitBinned[iTime];}
+    inline double getCrFit(int iTime)       {return _CrFit[iTime];}
+    inline double getCrFitDot(int iTime)    {return _CrFitDot[iTime];}
 
 };
 

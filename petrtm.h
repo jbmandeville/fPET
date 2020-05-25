@@ -42,7 +42,7 @@ private:
     RTMModelTypes _modelRTM=RTM_SRTM3;
     int _PETWeightingModel=Weights_Uniform;
     double _tau4Default=10.;
-    double _smoothingScale=0.;
+    double _smoothingScaleMin=0.;
     bool _dCrdtIncluded=false;
     bool _referenceRegionIsDefined=false;
     QString _petConditionsFromTimeModelFile; // a copy to be applied when the time model is read completely (so it won't be trimmed by incomplete info)
@@ -121,14 +121,13 @@ private:
     dVector _ySEMForChallAv; // [nPre + nPost + 1]
     dVector _yFitForChallAv; // [nPre + nPost + 1]
 
-    QVector<QVector<PolynomialGLM>> _quadLOESS;  // [_nRuns][nTimePerRun]
+    QVector<LOESS> _quadLOESS;  // [_nRuns]
 
     void createEventBasisFunction(QChar eventID, dVector &basis);
     static double referenceRegionFitFunction(double time, double *p);
     void fitLoessCurve(dMatrix &runData);
     double Gauss(double x, double fwhm);
     void updateReferenceRegion();
-    void defineLOESSFitting(int iRun);
     void readGLMIgnoreBlock(QTextStream *in_stream, int iRun, QString inputString);
     void integrateByRun(dMatrix &basisFunction );
     void differentiateByRun(dMatrix &basisFunction );
@@ -221,7 +220,7 @@ public:
     void setRTMModelType(RTMModelTypes model);
     void setRTMModelType(QString model);
     void setWeightsInRun(int iRun);
-    void setSmoothingScale(double smoothingScale);
+    void setSmoothingScaleMin(double smoothingScale);
     inline void setTau4(int iRun, double tau4) {_tau4[iRun] = tau4; setPrepared(false);}
     inline void setTau2RefSRTM(int iRun, double tau2Ref) {_tau2RefSRTMFixed[iRun] = tau2Ref; setPrepared(false);}
     inline void setTau2RefFRTM(int iRun, double tau2Ref) {_tau2RefFRTMFixed[iRun] = tau2Ref; setPrepared(false);}
@@ -261,7 +260,7 @@ public:
     inline int getChallengeShape(int indexChallenge) {return _challengeShape[indexChallenge];}
     inline double getChallengeTau(int indexChallenge) {return _challengeTau[indexChallenge];}
     inline double getChallengeAlpha(int indexChallenge) {return _challengeAlpha[indexChallenge];}
-    inline double getSmoothingScale() {return _smoothingScale;}
+    inline double getSmoothingScaleMin() {return _smoothingScaleMin;}
     inline double getTau4(int iRun) {return _tau4[iRun];}
     inline int getNumberIterations() {return _nIterations;}
     inline bool getInclusionOfdCrdt() {return _dCrdtIncluded;}

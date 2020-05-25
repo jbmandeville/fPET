@@ -420,6 +420,7 @@ void GeneralGLM::addOrInsertBasisFunction( int iBasis, dVector X_t)
 void GeneralGLM::fitWLS(dVector data, bool computeSigma2)
 { // computeSigma2: if true, find sigma2 from residue; else assume sigma2 is known and used in weighting matrix
     // If any sigma values are zero, ignore the voxel.
+//    FUNC_ENTER << _nCoeff;
     bool allZeroes=true;
     for (int jt=0; jt<_nTime; jt++)
         allZeroes &= (data[jt] == 0.);
@@ -447,7 +448,7 @@ void GeneralGLM::fitWLS(dVector data, bool computeSigma2)
     {
         _fit_t[jt] = _fitErr_t[jt] = 0.;
         for (int jc=0; jc<_nCoeff; jc++)
-            _fit_t[jt]    += _X_tc[jt][jc] * _beta_c[jc];
+            _fit_t[jt] += _X_tc[jt][jc] * _beta_c[jc];
     }
 
     if ( computeSigma2 )
@@ -497,6 +498,7 @@ void GeneralGLM::fitWLS(dVector data, bool computeSigma2)
         for (int jc=0; jc<_nCoeff; jc++)
             _fitErr_t[jt] += _X_tc[jt][jc] * _sem_c[jc];
     }
+//    FUNC_EXIT;
 }
 
 void GeneralGLM::defineConditions(QString conditionString )
@@ -746,19 +748,28 @@ void GeneralGLM::calculatePseudoInverse()
     _prepared = true;
 }
 
-void PolynomialGLM::define(int nCoeff, int nTime)
+void PolynomialGLM::define(int nPoly, int nCoeff, int nTime)
 {
+//    FUNC_ENTER << nPoly << nCoeff << nTime;
     dVector xVector;  xVector.resize(nTime);
-    double duration = nTime - 1;
+    double duration = qMax(1.,static_cast<double>(nTime-1));
     // convert to a vector on the range -1,1
     for ( int jt=0; jt<nTime; jt++ )
-        xVector[jt] = 2.*static_cast<double>(jt)/duration - 1.;
-    define(nCoeff, xVector);
+        xVector[jt] = 2.*static_cast<double>(jt)/duration - 1.;  // range=(-1,1) with center point at x=0 or x=1/(n-1)
+    define(nPoly, nCoeff, xVector);
 }
 
-void PolynomialGLM::define(int nCoeff, dVector xVector)
+void PolynomialGLM::define(int nPoly, int nCoeff, dVector xVector)
+{
+    int iCenter = _xInputVector.size()/2;
+    define(nPoly, nCoeff, xVector, iCenter);
+}
+
+void PolynomialGLM::define(int nPoly, int nCoeff, dVector xVector, int iCenter)
 { // This defines a simple polynomial GLM for fitting a single scan
+    _nPoly = nPoly;  // usually this is the same as _nCoeff in generalGLM, but it could differ if additional basis functions are added
     _xInputVector = xVector;
+    _centralPoint = iCenter;
     int nTime = _xInputVector.size();
     if ( nTime < nCoeff )
       {
@@ -778,6 +789,7 @@ void PolynomialGLM::define(int nCoeff, dVector xVector)
     {
         for ( int jt=0; jt<nTime; jt++ )
             X_t[jt] = baselineBasisFunction(jPoly,getNormalizedTime(jt));
+//        FUNC_INFO << "jPoly" << jPoly << "X_t" << X_t;
         addOrInsertBasisFunction(jPoly,X_t);
     }
     // set uniform weights as default
@@ -787,12 +799,30 @@ void PolynomialGLM::define(int nCoeff, dVector xVector)
 }
 double PolynomialGLM::getNormalizedTime(double time)
 { // convert time (via the index into _xInputVector) to the range (-1,1)
-    double duration = _xInputVector[_xInputVector.size()-1] - _xInputVector[0];  // duration = max - min
-    double minusOneToOne = 2.*(time-_xInputVector[0])/duration - 1.;
+    double minusOneToOne = 0.;
+    if ( _centralPoint < 0 )
+    {
+        double duration = _xInputVector[_xInputVector.size()-1] - _xInputVector[0];  // duration = max - min
+        if ( duration != 0. )
+        {
+            double scale = 2./duration;  double offset = 2.*_xInputVector[0]/duration - 1.;
+            minusOneToOne = scale * time + offset;
+        }
+    }
+    else
+    { // LOESS; generally #pts should be odd, so there is a central point
+        double x0 = _xInputVector[_centralPoint]; double xLow = _xInputVector[0]; double xHigh = _xInputVector[_xInputVector.size()-1];
+        double maxHalfWidth = qMax(qAbs(x0-xLow),qAbs(xHigh-x0));
+        if ( maxHalfWidth == 0.)
+            minusOneToOne = 0.;
+        else
+            minusOneToOne = (time-x0)/maxHalfWidth;
+//        FUNC_INFO << "(x0, xLow, xHigh), maxHalfWidth minusOneToOne" << "(" << xLow << x0 << xHigh << ")" << maxHalfWidth << time << minusOneToOne;
+    }
     return minusOneToOne;
 }
 double PolynomialGLM::baselineBasisFunction(int iPoly, double x)
-{ // return Legendre polynomial of x with order iPoly
+{ // return Legendre polynomial of x with order iPoly; use x in the range (-1,1)
     double value;
     if ( iPoly == 0 )
         value = 1.;
@@ -807,18 +837,6 @@ double PolynomialGLM::baselineBasisFunction(int iPoly, double x)
     else // if ( iPoly == 5 )
         value = 0.125 * (63.*x*x*x*x*x - 70.*x*x*x + 15.*x);
     return value;
-}
-double PolynomialGLM::getDerivative(double time)
-{ // dBasis/dt = dBasis/dt' * dt'/dt
-    double duration = _xInputVector[_xInputVector.size()-1] - _xInputVector[0];  // duration = max - min
-    double derivative = 0.;
-    for (int jPoly=0; jPoly<_nCoeff; jPoly++)
-    {
-        double polyDeriv = getBasisDerivative(jPoly,getNormalizedTime(time));
-        polyDeriv *= 2./duration * getBeta(jPoly);  // multiply by dt'/dt and fitted coefficient beta
-        derivative += polyDeriv;
-    }
-    return derivative;
 }
 double PolynomialGLM::getBasisDerivative(int iPoly, double x)
 { // return Legendre polynomial of x with order iPoly
@@ -836,4 +854,243 @@ double PolynomialGLM::getBasisDerivative(int iPoly, double x)
     else // if ( iPoly == 5 )
         value = 1.875 * (21.*x*x*x*x - 14.*x*x + 1.);
     return value;
+}
+double PolynomialGLM::getFitInterpolation(double time)
+{ // if _nCoeff > _nPoly, the extra terms will need to be computed outside of this class based upon the extra terms parametric definition
+    double x = getNormalizedTime(time);
+    FUNC_ENTER << _nPoly << _nCoeff << time << x;
+    double fitValue=0.;
+    for (int jPoly=0; jPoly<_nPoly; jPoly++)
+        fitValue += baselineBasisFunction(jPoly, x) * getBeta(jPoly);
+    FUNC_EXIT << fitValue;
+    return fitValue;
+}
+
+double PolynomialGLM::getDerivative(int iTime)
+{ // dBasis/dt = dBasis/dt' * dt'/dt
+    double derivative = 0.;
+    for (int jPoly=0; jPoly<_nCoeff; jPoly++)
+    {
+        double polyDeriv = getBasisDerivative(jPoly,getNormalizedTime(iTime));
+        derivative += polyDeriv;
+    }
+    double duration = _xInputVector[_xInputVector.size()-1] - _xInputVector[0];  // duration = max - min
+    return derivative * 2./duration;  // dBasis/dt = dBasis/dt' * dt'/dt
+}
+
+double PolynomialGLM::getDerivative(double time)
+{ // dBasis/dt = dBasis/dt' * dt'/dt
+    double derivative = 0.;
+    for (int jPoly=0; jPoly<_nCoeff; jPoly++)
+    {
+        double polyDeriv = getBasisDerivative(jPoly,getNormalizedTime(time));
+        derivative += polyDeriv;
+    }
+    double duration = _xInputVector[_xInputVector.size()-1] - _xInputVector[0];  // duration = max - min
+    return derivative * 2./duration;  // dBasis/dt = dBasis/dt' * dt'/dt
+}
+
+void LOESS::define(dVector timeVector, double smoothingScaleMin)
+{
+    FUNC_ENTER << timeVector;
+    FUNC_INFO << smoothingScaleMin;
+    _xPoints = timeVector;
+    _smoothingScaleMin = smoothingScaleMin;
+    // Define local quadratic smoothing for each this run: (one function for each time point)
+    int nTime = timeVector.size();
+    _polyLOESS.resize(nTime);
+    for ( int jt=0; jt<nTime; jt++)
+    {
+        FUNC_INFO << "jt" << jt << "\n";
+        double time0 = timeVector[jt];
+        int iLowSide=0;  double time = time0;  double width=0.;
+        while ( jt - iLowSide >= 0 && width < _smoothingScaleMin )
+        {
+            time = timeVector[jt-iLowSide];
+            width = qAbs(time-time0);
+            iLowSide++;
+        }
+        iLowSide--;
+        int iHighSide=0;  time = time0;  width = 0.;
+        while ( jt + iHighSide < nTime && width < _smoothingScaleMin )
+        {
+            time = timeVector[jt+iHighSide];
+            width = qAbs(time-time0);
+            iHighSide++;
+        }
+        iHighSide--;
+        // Set weights
+        dVector weight;  weight.clear();
+        int iHalfWidth = qMax(1,qMin(iLowSide,iHighSide));
+        dVector localTime;
+        int iLocal=0;
+        int iCenter=0;
+        for ( int jRel=-iLowSide; jRel<=iHighSide; jRel++)
+        {
+            int iTime = jt + jRel;
+            if ( iTime >= 0 && iTime < nTime )
+            {
+                time = timeVector[iTime];
+                double distance = qAbs(time-time0) / _smoothingScaleMin;
+                if ( distance < 0.99 )
+                {
+                    localTime.append(time-time0);
+                    weight.append(qPow(1-qPow(distance,3),3));  // use traditional tri-cube weight function
+                    if ( jRel == 0 ) iCenter = iLocal;
+                    iLocal++;
+                }
+                FUNC_INFO << "jRel, iTime, time, time0" << jRel << iTime << time << time0;
+                FUNC_INFO << "_smoothingScaleMin, distance, weight" << _smoothingScaleMin << distance << weight.last();
+            }
+        }
+        FUNC_INFO << "localTime" << localTime;
+        FUNC_INFO << "define poly[" << jt << "] using central point" << iCenter << "and weights" << weight;
+        //             define       (nCoeff,          nTime)
+        _polyLOESS[jt].define(qMin(weight.size(),3),localTime,iCenter);  // qMax: don't define 3 terms with only 2 points
+//        _polyLOESS[jt].define(qMin(weight.size(),3),weight.size());  // qMax: don't define 3 terms with only 2 points
+        FUNC_EXIT << "poly[" << jt << "] = " << _polyLOESS[jt].getNumberTimePoints();
+        _polyLOESS[jt].setWeights(weight);
+    }
+}
+void LOESS::defineAndFit(dVector timeVector, dVector yVector, double smoothingScale, bool asymmetric, bool linkWidthToTime)
+{
+//    FUNC_ENTER << timeVector;
+//    FUNC_INFO << smoothingScale;
+    _xPoints = timeVector;
+    _smoothingScaleMin    = smoothingScale;
+    double smoothingWidth = smoothingScale;
+    // Define local quadratic smoothing for each this run: (one function for each time point)
+    int nTime = timeVector.size();
+    _polyLOESS.resize(nTime);
+    for ( int jt=0; jt<nTime; jt++)
+    {
+//        FUNC_INFO << "jt" << jt << "\n";
+        double time0 = timeVector[jt];
+        if ( linkWidthToTime ) smoothingWidth = time0 * smoothingScale;    // link smoothing width to time, e.g., smoothingScale=0.5
+        int iLowSide=0;  double time = time0;  double width=0.;
+        while ( jt - iLowSide >= 0 && width < smoothingWidth )
+        {
+            time = timeVector[jt-iLowSide];
+            width = qAbs(time-time0);
+            iLowSide++;
+        }
+        iLowSide--;
+        int iHighSide=0;  time = time0;  width = 0.;
+        while ( jt + iHighSide < nTime && width < smoothingWidth )
+        {
+            time = timeVector[jt+iHighSide];
+            width = qAbs(time-time0);
+            iHighSide++;
+        }
+        iHighSide--;
+        // Set weights
+        dVector weight;  weight.clear();
+        int iHalfWidth = qMax(1,qMin(iLowSide,iHighSide));
+        dVector localTime, localYData;
+        int iLocal=0;
+        int iCenter=0;
+        if ( !asymmetric ) iLowSide = iHighSide = iHalfWidth;
+        for ( int jRel=-iLowSide; jRel<=iHighSide; jRel++)
+        {
+            int iTime = jt + jRel;
+            if ( iTime >= 0 && iTime < nTime )
+            {
+                time = timeVector[iTime];
+                double distance = qAbs(time-time0) / smoothingWidth;
+                if ( distance < 0.99 )
+                {
+                    localTime.append(time);
+                    localYData.append(yVector[iTime]);
+                    weight.append(qPow(1-qPow(distance,3),3));  // use traditional tri-cube weight function
+                    if ( jRel == 0 ) iCenter = iLocal;
+                    iLocal++;
+                }
+//                FUNC_INFO << "jRel, iTime, time, time0" << jRel << iTime << time << time0;
+//                FUNC_INFO << "smoothingWidth, distance, weight" << smoothingWidth << distance << weight.last();
+            }
+        }
+//        FUNC_INFO << "localTime[" << jt << "] =" << localTime;
+//        FUNC_INFO << "localYData" << localYData;
+//        FUNC_INFO << "define poly[" << jt << "] using central point" << iCenter << "and weights" << weight;
+        //             define       (nCoeff,          nTime)
+        _polyLOESS[jt].define(qMin(weight.size(),3),localTime,iCenter);  // qMax: don't define 3 terms with only 2 points
+        _polyLOESS[jt].fitWLS(localYData,false);
+//        FUNC_EXIT << "poly[" << jt << "] = " << _polyLOESS[jt].getNumberTimePoints();
+        _polyLOESS[jt].setWeights(weight);
+    }
+}
+
+double LOESS::getFitInterpolation(double xBetween)
+{
+    double minDistance=1.e10;  int iClosest = -1;
+    for ( int jX=0; jX<_polyLOESS.size(); jX++)
+    {
+        double x = _xPoints[jX];
+        double distance = qAbs(x-xBetween);
+        if ( distance < minDistance)
+        {
+            minDistance = distance;
+            iClosest = jX;
+        }
+    }
+    FUNC_INFO << "for xBetween =" << xBetween << "closest =" << iClosest << "with x =" << _xPoints[iClosest];
+    return _polyLOESS[iClosest].getFitInterpolation(xBetween);
+}
+
+dVector LOESS::fit(dVector data)
+{
+    dVector fit = data;
+    for (int jt=0; jt<data.size(); jt++)
+    {
+        int nLocal  = _polyLOESS[jt].getNumberTimePoints();
+        int iHalfWidth = nLocal/2;
+        dVector localData;  localData.resize(nLocal);
+        int jLocal=0;
+        for ( int jRel=-iHalfWidth; jRel<=iHalfWidth; jRel++, jLocal++ )
+        {
+            int iTime = jt + jRel;
+            if ( iTime >= 0 && iTime < data.size() )
+                localData[jLocal] = data[iTime];
+            else
+                localData[jLocal] = 0.;  // should also have weight=0.
+        }
+        _polyLOESS[jt].fitWLS(localData,true);
+        fit[jt] = getFitAtCentralPoint(jt);
+    }
+    return fit;
+}
+
+double LOESS::getFirstDerivative(int iTime)
+{ // presume define() and fit() preceeded this
+//    FUNC_ENTER << iTime;
+    double deriv = 0.;
+    if ( iTime > 0 && iTime < _polyLOESS.size()-1 )
+        deriv = (getFitAtCentralPoint(iTime+1) - getFitAtCentralPoint(iTime-1)) / (_xPoints[iTime+1] - _xPoints[iTime-1]);
+    else if ( iTime == 0 )
+        deriv = (getFitAtCentralPoint(1) - getFitAtCentralPoint(0)) / (_xPoints[1] - _xPoints[0]);
+    else // iTime == _polyLOESS.size()-1
+    {
+        int it = _polyLOESS.size()-1;
+        deriv= (getFitAtCentralPoint(it) - getFitAtCentralPoint(it-1)) / (_xPoints[it] - _xPoints[it-1]);
+    }
+    return deriv;
+}
+
+double LOESS::getSecondDerivative(int iTime)
+{ // presume define() and fit() preceeded this
+//    FUNC_ENTER << iTime;
+    double deriv = 0.;
+    if ( iTime > 0 && iTime < _polyLOESS.size()-1 )
+    {
+        double x1 = _xPoints[iTime-1];  double y1 = getFitAtCentralPoint(iTime-1);
+        double x2 = _xPoints[iTime];    double y2 = getFitAtCentralPoint(iTime);
+        double x3 = _xPoints[iTime+1];  double y3 = getFitAtCentralPoint(iTime+1);
+        double x21 = x2 - x1;           double x31 = x3 - x1;         double x32 = x3 - x2;
+        deriv = 2.*y1/x21/x31 - 2.*y2/x32/x21 + 2.*y3/x32/x31;
+    }
+    else if ( iTime == 0 )
+        deriv = getSecondDerivative(1);
+    else
+        deriv = getSecondDerivative(_polyLOESS.size()-2);
+    return deriv;
 }
