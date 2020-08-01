@@ -217,6 +217,7 @@ public:
     double getFirstDerivative(int iTime);
     double getSecondDerivative(int iTime);
     double getFitInterpolation(double xBetween);
+    inline double operator() (int iX) {return getFitAtCentralPoint(iX);}
 };
 
 #endif // GENERALGLM_H

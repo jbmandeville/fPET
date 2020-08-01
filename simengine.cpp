@@ -46,30 +46,34 @@ void simEngine::updateFineSamples()
     }
 }
 
-void simEngine::setCrFit(dVector CrFitCoarse, dVector CrFitFine)
+void simEngine::setCrFit(dVector CrFitCoarse)
 {
     if ( _nBins != CrFitCoarse.size() )
     {
         FUNC_INFO << _nBins << CrFitCoarse.size();
         qFatal("Error in simEngine::setCrFit - the # of coarse bins should match the # in the fit vector");
     }
-    else if ( _dtFine.size() != CrFitFine.size() )
-        qFatal("Error in simEngine::setCrFit - the # of fine bins should match the # in the fit vector");
     _CrFitBinned = CrFitCoarse;
-    _CrFit       = CrFitFine;
+
+    tk::spline spline;
+    spline.set_points(_timeCoarse,_CrFitBinned);    // currently it is required that X is already sorted
+
+    // fine scale: interpolate LOESS using spline
+    int nTimeFine = getNumberTimeBinsFine();
+    _CrFit.clear();
+    for (int jTime=0; jTime<nTimeFine; jTime++)
+        _CrFit.append(qMax(0.,spline(_timeFine[jTime])));
+
     _CrFitDot.fill(0.,_CrFit.size());
     // Calculate the derivative
     for (int jBin=0; jBin<_CrFit.size(); jBin++)
     {
         if ( jBin != 0 )
             _CrFitDot[jBin] = (_CrFit[jBin] - _CrFit[jBin-1]) / _dtFine[jBin];
-//        if ( jBin != 0 && jBin != _CrFit.size()-1 )
-//            _CrFitDot[jBin] = (_CrFit[jBin+1] - _CrFit[jBin-1]) / 2./_dtFine[jBin];
         else
             _CrFitDot[jBin] = 0.;
     }
 }
-
 
 void simEngine::run()
 {
@@ -113,29 +117,6 @@ void simEngine::generatePlasmaTAC()
         _Cp.append(Cp_fast + Cp_slow);
     }
     _CpBinned = downSample(_Cp);
-}
-
-void simEngine::fitReferenceRegion()
-{
-    cVector baselineID = {'1','2','3','4','5','6'};
-
-    // initialize a GLM for fitting the reference region
-    _glmRR.init(getNumberTimeBinsFine(), 0);  // set nCoeff to 0 here, so coefficients will be appended during creation
-
-    // define 6 baseline terms
-    double duration = getTimeFine(getNumberTimeBinsFine()-1);
-    for (int jPoly=0; jPoly<6; jPoly++)
-    {
-        dVector basisFine;  basisFine.fill(0.,getNumberTimeBinsFine());
-        for (int jt=0; jt<getNumberTimeBinsFine(); jt++)
-        {
-            double time = getTimeFine(jt);
-            double x = -1. + 2.*time/duration;
-            basisFine[jt] = baselineBasisFunction(jPoly, x);
-        }
-        _glmRR.addOrInsertBasisFunction(jPoly,basisFine);
-    }
-    // Now add the gamma-variate function
 }
 
 double simEngine::baselineBasisFunction(int iPoly, double x)

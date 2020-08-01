@@ -21,7 +21,7 @@ private:
     int _nBins = 90;
     iVector _durationBinSec;     // [_nBins]; seconds
     iVector _numberSamplesPerBin;  // [_nBins]
-    dVector _dtFine;          // [sum of _numberSamplesPerBin = # of fine bins]
+    dVector _dtFine;          // [sum of _numberSamplesPerBin = # of fine bins]; units = sec
     dVector _timeFine;        // [sum of _numberSamplesPerBin = # of fine bins]
     dVector _dtCoarse;        // [_nBins]
     dVector _timeCoarse;      // [_nBins]
@@ -54,7 +54,7 @@ private:
     dVector _CrFit;        // fine samples of the fit value above
     dVector _CrFitDot;     // derivative of _CrFit
     // structure for fitting the RR
-    GeneralGLM _glmRR;
+    LOESS _quadLOESS;
 
     // derived quantities //////////////////////////
     double _K1;    // K1 = R1 * K1_ref
@@ -87,7 +87,6 @@ private:
     dVector differentiateTissueVector();
     dVector calculateConvolution(dVector tissue);
 
-    void fitReferenceRegion();
     double baselineBasisFunction(int iPoly, double x);
     double gammaVariateFunction(double time, double onset, double alpha, double tau);
 
@@ -138,7 +137,7 @@ public:
     inline void setDurationBins(iVector durationVector)   {_durationBinSec = durationVector;      updateFineSamples();}
     inline void setSimulationStartingPoint(simulationStartingPoint startingPoint) {_simStartingPoint = startingPoint;}
 
-    void setCrFit(dVector CrFitCoarse, dVector CrFitFine);
+    void setCrFit(dVector CrFitCoarse);
 
     // getters
     inline int getNumberTimeBinsFine()   {return _dtFine.size();}

@@ -2,6 +2,9 @@ QT += gui printsupport
 QMAKE_MAC_SDK = macosx10.14
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
+LIBS += -L"$$_PRO_FILE_PWD_/3rdparty/fftw-3.3.8/lib" -lfftw3
+INCLUDEPATH += 3rdparty/fftw-3.3.8/include
+
 #CONFIG += c++11 console
 #CONFIG -= app_bundle
 
@@ -23,6 +26,7 @@ SOURCES += \
         petrtm.cpp \
         plot.cpp \
         qcustomplot.cpp \
+        simanalyzer.cpp \
         simengine.cpp \
         simwindow.cpp \
         utilio.cpp
@@ -39,6 +43,7 @@ HEADERS += \
     petrtm.h \
     plot.h \
     qcustomplot.h \
+    simanalyzer.h \
     simengine.h \
     simwindow.h
 

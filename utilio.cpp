@@ -7,7 +7,7 @@
 #include <QFileDialog>
 #include <QFile>
 #include "io.h"
-//#include <fftw3.h>
+#include <fftw3.h>
 
 namespace utilIO
 {
@@ -58,7 +58,7 @@ namespace utilIO
       return (byte_order);
     }
 
-    int readOverlayFile(VoxelSet &voxelList, QString fileName, overlayColor color, IPoint3D dimSpace)
+    int readOverlayFile(VoxelSet &voxelList, QString fileName, overlayColor color, iPoint3D dimSpace)
     {
         QFile file(fileName);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -81,7 +81,7 @@ namespace utilIO
             QStringList valueList = unCommented.split(rx, QString::SkipEmptyParts);
             if ( !valueList.at(0).compare("dimensions",Qt::CaseInsensitive) )
             { // typically this should be on the 1st line, if used
-                IPoint3D dim;
+                iPoint3D dim;
                 dim.x = valueList.at(1).toInt();
                 dim.y = valueList.at(2).toInt();
                 dim.z = valueList.at(3).toInt();
@@ -121,7 +121,7 @@ namespace utilIO
     }
 
     QString readTimeTableFile(QString fileName, QStringList &columnNames, dMatrix &table)
-    {   // Read PREVIOUSLY ALLOCATED table[time][column]
+    {   // table[time][column] should be allocated previously
         // The time length will not change; the column length may change
         QFile file(fileName);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -173,120 +173,15 @@ namespace utilIO
         return "";
     }
 
-    QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table)
-    {   // read table table[column][time]; need not be previously allocated
-        QFile file(fileName);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-        {
-            QString errorString = "Error attempting to open file " + fileName;
-            return errorString;
-        }
-        QTextStream in_stream(&file);
-        QString line = in_stream.readLine();
-        QString unCommented = line.left(line.indexOf("#"));
-        QRegExp rx("[,\\s]");// match a comma or a space
-        columnNames = unCommented.split(rx, QString::SkipEmptyParts);
-        int nColumns = columnNames.size();
-        table.resize(nColumns);
-        for (int jColumn=0; jColumn<table.size(); jColumn++)
-            table[jColumn].clear();
-
-        int iTime = 0;
-        while ( !in_stream.atEnd() )
-        {
-            QString line = in_stream.readLine();
-            QString unCommented = line.left(line.indexOf("#"));
-            if ( !unCommented.isEmpty() )
-            {
-                QStringList valueList = unCommented.split(QRegExp("[,\\s]"), QString::SkipEmptyParts);
-                if ( valueList.size() != 0 )
-                {
-                    if ( valueList.size() < nColumns )
-                    {
-                        QString errorString = QString("Error: # columns = %1 but expected # = %2 on line %3.").
-                                arg(valueList.size()).arg(nColumns).arg(iTime);
-                        return errorString;
-                    }
-                    else
-                    {
-                        for ( int jColumn=0; jColumn<nColumns; jColumn++)
-                        {
-                            QString valueString = valueList.at(jColumn);
-                            bool ok;
-                            double value = valueString.toDouble(&ok);
-                            if ( ok )
-                                table[jColumn].append(value);
-                        } // jColumn
-                    } // < nColumns
-                } // valueSize != 0
-            } // !empty
-            iTime++;
-        } // new line
-        file.close();
-        return "";
-    }
-
 }
 
 ////////////////////////////////////////////////////////////////////////////
-
-/*
- * spline.h
- *
- * simple cubic spline interpolation library without external
- * dependencies
- *
- * ---------------------------------------------------------------------
- * Copyright (C) 2011, 2014 Tino Kluge (ttk448 at gmail.com)
- *
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version 2
- *  of the License, or (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
- * ---------------------------------------------------------------------
- *
- */
-/*************** usage: *****************
-
-#include <cstdio>
-#include <cstdlib>
-#include <vector>
-#include "spline.h"
-
-int main(int argc, char** argv) {
-
-   dVector X(5), Y(5);
-   X[0]=0.1; X[1]=0.4; X[2]=1.2; X[3]=1.8; X[4]=2.0;
-   Y[0]=0.1; Y[1]=0.7; Y[2]=0.6; Y[3]=1.1; Y[4]=0.9;
-
-   tk::spline s;
-   s.set_points(X,Y);    // currently it is required that X is already sorted
-
-   double x=1.5;
-
-   printf("spline at %f is %f\n", x, s(x));
-
-   return EXIT_SUCCESS;
-}
-*/ //*************** end usage *****************
 
 #ifndef TK_SPLINE_H
 #define TK_SPLINE_H
 
 //#include <cstdio>
 #include <algorithm>
-
-
-// unnamed namespace only because the implementation is in this
-// header file and we don't want to export symbols to the obj files
 namespace tk
 {
 
@@ -412,9 +307,6 @@ dVector band_matrix::lu_solve(const dVector& b,
     x=this->r_solve(y);
     return x;
 }
-
-
-
 
 // spline implementation
 // -----------------------
@@ -546,7 +438,6 @@ double spline::operator() (double x) const
     return interpol;
 }
 
-
 } // namespace tk
 
 #endif /* TK_SPLINE_H */
@@ -554,6 +445,154 @@ double spline::operator() (double x) const
 ////////////////////////////////////////////////////////////////////////////
 namespace utilMath
 {
+
+void FFTW1D_Volume( iPoint3D dim, dcVector &volume, int iDimFFT, bool forward )
+// iDimFFT: 0 -> x, 1 -> y, 2 -> z
+// forward: k-space to image space
+{
+    int lInner, lOuter1, lOuter2;
+    if ( iDimFFT == 0 )
+    {
+        lInner  = dim.x;
+        lOuter1 = dim.y;
+        lOuter2 = dim.z;
+    }
+    else if ( iDimFFT == 1 )
+    {
+        lOuter1 = dim.x;
+        lInner  = dim.y;
+        lOuter2 = dim.z;
+    }
+    else
+    {
+        lOuter1 = dim.x;
+        lOuter2 = dim.y;
+        lInner  = dim.z;
+    }
+    int direction;
+    double div;
+    if ( forward )
+    {
+        direction = FFTW_FORWARD;
+        div = static_cast<double>(lInner);
+    }
+    else
+    {
+        direction = FFTW_BACKWARD;
+        div = 1.;
+    }
+
+    dComplex *dcData1D   = utilIO::allocate_vector<dComplex>(lInner);
+    fftw_complex *fftwData  = static_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex)*static_cast<unsigned long>(lInner))); // doubles
+    fftw_plan plan_ft1d =fftw_plan_dft_1d(lInner, fftwData, fftwData, direction, FFTW_ESTIMATE);
+
+    for (int j1=0; j1<lOuter1; j1++)
+    {
+        for (int j2=0; j2<lOuter2; j2++)
+        {
+            for (int jIn=0; jIn<lInner; jIn++)
+            {
+                int index;
+                if ( iDimFFT == 0 )
+                    index = utilIO::index3d(dim, jIn, j1, j2);
+                else if ( iDimFFT == 1 )
+                    index = utilIO::index3d(dim, j1, jIn, j2);
+                else
+                    index = utilIO::index3d(dim, j1, j2, jIn);
+                dcData1D[jIn].real = volume[index].real;
+                dcData1D[jIn].imag = volume[index].imag;
+            } // jIn
+            // swap on input
+            utilMath::swapX( dcData1D, lInner, 0 );
+            // Assign the fftw directly (rather than use pointers) in case the byte size differs for the 2 arrays.
+            for (int jIn=0; jIn<lInner; jIn++)
+            {
+                fftwData[jIn][0] = dcData1D[jIn].real;
+                fftwData[jIn][1] = dcData1D[jIn].imag;
+            }
+            // Transform the data.
+            fftw_execute(plan_ft1d);
+            // Use the original array.
+            for (int jIn=0; jIn<lInner; jIn++)
+            {
+                dcData1D[jIn].real = fftwData[jIn][0];
+                dcData1D[jIn].imag = fftwData[jIn][1];
+            }
+            // The data comes out of the fft routine in wrap-around order.
+            utilMath::swapX( dcData1D, lInner, 1 );
+            // Put the transformed data back into the original matrix.
+            for (int jIn=0; jIn<lInner; jIn++)
+            {
+                int index;
+                if ( iDimFFT == 0 )
+                    index = utilIO::index3d(dim, jIn, j1, j2);
+                else if ( iDimFFT == 1 )
+                    index = utilIO::index3d(dim, j1, jIn, j2);
+                else
+                    index = utilIO::index3d(dim, j1, j2, jIn);
+                volume[index].real = dcData1D[jIn].real / div;
+                volume[index].imag = dcData1D[jIn].imag / div;
+            } // jIn
+        } // j2
+    } // j1
+    // Free data and plan allocation
+    utilIO::delete_vector(dcData1D);
+    fftw_destroy_plan(plan_ft1d);
+    fftw_free(fftwData);
+}
+
+dComplex complexMultiply(dComplex dc1, dComplex dc2, bool star)
+{
+    // dc1*dc2  or dc1*(dc2*)
+    double sign = 1.;
+    if ( star ) sign = -1.;
+
+    dComplex dc;
+    dc.real = dc1.real * dc2.real - sign * dc1.imag * dc2.imag;
+    dc.imag = dc1.real * dc2.imag + sign * dc1.imag * dc2.real;
+    return(dc);
+}
+
+double computePhase(dComplex dc)
+{
+    double phase;
+
+    if ( dc.real != 0. )
+    {
+        phase = qAtan(dc.imag/dc.real);
+        if ( dc.real < 0. ) phase += PI;
+        if ( phase > PI ) phase -= 2*PI;
+    }
+    else
+    {
+        if ( dc.imag == 0. )
+            phase = 0.;
+        else if ( dc.imag > 0. )
+            phase = PI/2.;
+        else
+            phase = - PI/2.;
+    }
+    return(phase);
+}
+
+double computeAmplitude(dComplex dc)
+{
+  double amp;
+  amp = sqrt(dc.real*dc.real + dc.imag*dc.imag);
+  return(amp);
+}
+
+double dotProduct(dVector v1, dVector v2)
+{
+    double sum=0.;
+    for (int j=0; j<v1.size(); j++)
+        sum += v1[j] * v2[j];
+    return sum;
+}
+double dotProduct(dPoint3D v1, dPoint3D v2)
+{
+    return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
+}
 
 bool dInvertSquareMatrix( dMatrix &dSquareMatrix )
 {
@@ -783,6 +822,32 @@ void swapX( dComplex *dcData, int lDim, int lAdd )
     }
 }
 
+double polynomialLegendre(int iPoly, double x)
+{ // return Legendre polynomial of x with order iPoly<=9; use x in the range (-1,1)
+    double value;
+    if ( iPoly == 0 )
+        value = 1.;
+    else if ( iPoly == 1 )
+        value = x;
+    else if ( iPoly == 2 )
+        value = 0.5 * (3*x*x -1.);
+    else if ( iPoly == 3 )
+        value = 0.5 * (5.*qPow(x,3) - 3.*x);
+    else if ( iPoly == 4 )
+        value = 0.125 * (35.*qPow(x,4) - 30.*x*x + 3.);
+    else if ( iPoly == 5 )
+        value = 0.125 * (63.*qPow(x,5) - 70.*qPow(x,3) + 15.*x);
+    else if ( iPoly == 6 )
+        value = 1./16. * (231.*qPow(x,6) - 315.*qPow(x,4)+ 105.*x*x - 5.);
+    else if ( iPoly == 7 )
+        value = 1./16. * (429.*qPow(x,7) - 693.*qPow(x,5) + 315.*qPow(x,3) - 35.);
+    else if ( iPoly == 8 )
+        value = 1./128. * (6435.*qPow(x,8) - 12012.*qPow(x,6) + 6930.*qPow(x,4) - 1260.*x*x + 35);
+    else // if ( iPoly == 9 )
+        value = 1./128. * (12155.*qPow(x,9) - 25740.*qPow(x,7) + 18018.*qPow(x,5) - 4620.*qPow(x,3) + 315*x);
+    return value;
+}
+
 bool ParabolicInterpolation(double *xParabola, double *yParabola, double &xMax, double &yMax)
 // return = error state (true=success)
 {
@@ -873,7 +938,7 @@ bool ParabolicInterpolation(double *xParabola, double *yParabola, double &xMax, 
     }
 }
 
-void fuzzyBinning(double value, double min, double max, int nBins, IPoint2D &iBin, dPoint2D &weightBin )
+void fuzzyBinning(double value, double min, double max, int nBins, iPoint2D &iBin, dPoint2D &weightBin )
 { // triangular shaped bins that overlap
     double range  = max - min;
     double offset = value - min;
@@ -1705,7 +1770,12 @@ void copyArray(int iBegin, int iEnd, dVector &array, dVector &arrayWorking)
 }
 
 void topDownMergeSort(dVector &array, iVector &indexArray)
-{ // array has the items to sort; indexArray carries along the sorted indices for application to other vectors
+{   // array has the items to sort; indexArray carries along the sorted indices for application to other vectors
+    // initialize indexArray: allocate and fill
+    indexArray.resize(array.size());
+    for (int j=0; j<array.size(); j++)
+        indexArray[j] = j;
+
     dVector arrayWorking;   arrayWorking.resize(array.size());
     iVector indexWorking;   indexWorking.resize(indexArray.size());
     topDownSplitMerge(0, array.size(), array, arrayWorking, indexArray, indexWorking);
@@ -1760,7 +1830,7 @@ void copyArray(int iBegin, int iEnd, dVector &array, dVector &arrayWorking, iVec
     }
 }
 
-VoxelSet createVoxelList(int iThread, int nThreads, IPoint3D dim)
+VoxelSet createVoxelList(int iThread, int nThreads, iPoint3D dim)
 {
     VoxelSet voxelList;  voxelList.resize(0);
     int iVoxel=0;
@@ -1794,8 +1864,9 @@ void errorMessage(QString errorText)
     qInfo() << errorText;
 }
 
-int decodeSelectionList(QString list, iVector &includeVolume)
+int decodeSelectionList(QString inputList, bool usePlusOneSyntax, iVector &includeVolume)
 { // includeVolume should be previously allocated to the desired dimension
+//    FUNC_ENTER << usePlusOneSyntax << includeVolume;
     bVector includeBool;
     for ( int jt=0; jt<includeVolume.size(); jt++ )
     {
@@ -1804,7 +1875,7 @@ int decodeSelectionList(QString list, iVector &includeVolume)
         else
             includeBool.append(true);
     }
-    int error = decodeSelectionList(list, includeBool);
+    int error = decodeSelectionList(inputList, usePlusOneSyntax, includeBool);
     if ( error ) return error;
     for ( int jt=0; jt<includeBool.size(); jt++ )
     {
@@ -1816,13 +1887,17 @@ int decodeSelectionList(QString list, iVector &includeVolume)
     return 0;
 }
 
-int decodeSelectionList(QString list, bVector &includeVolume)
+int decodeSelectionList(QString inputList, bool usePlusOneSyntax, bVector &includeVolume)
 { // includeVolume should be previously defined with the desired dimension; values with be binary for inclusion
-    QStringList stringList = list.split(QRegExp("[ ]"), QString::SkipEmptyParts);
-    if ( list.isEmpty() || stringList.count() == 0 ) return 0;
+//    FUNC_ENTER << usePlusOneSyntax << includeVolume;
+    QStringList stringList = inputList.split(QRegExp("[ ]"), QString::SkipEmptyParts);
+    if ( inputList.isEmpty() || stringList.count() == 0 ) return 0;
 
-    list.replace(QRegExp(" "), "-");
-    stringList = list.split(QRegExp("[,]"), QString::SkipEmptyParts);
+    inputList.replace(QRegExp(" "), "-");
+    stringList = inputList.split(QRegExp("[,]"), QString::SkipEmptyParts);
+
+    int iOffset = 0;
+    if ( usePlusOneSyntax ) iOffset = -1;
     // Each string in the list should have values separated by dashes or spaces
     for (int jString=0; jString<stringList.count(); jString++)
     {
@@ -1833,8 +1908,8 @@ int decodeSelectionList(QString list, bVector &includeVolume)
         else if ( valueList.count() != 2 )
             return 1;
         bool ok1, ok2;
-        int iLow = valueList.at(0).toInt(&ok1);
-        int iHigh = valueList.at(1).toInt(&ok2);
+        int iLow = valueList.at(0).toInt(&ok1) + iOffset;
+        int iHigh = valueList.at(1).toInt(&ok2) + iOffset;
         if ( valueList.at(1) == "n" )
         {
             iHigh = includeVolume.size()-1;
@@ -1862,7 +1937,7 @@ int decodeSelectionList(QString list, bVector &includeVolume)
     return 0;
 }
 
-QString recodeSelectionList(iVector includeVolume)
+QString recodeSelectionList(iVector includeVolume, bool usePlusOneSyntax)
 {
     bVector includeBool;
     for ( int jt=0; jt<includeVolume.size(); jt++ )
@@ -1872,21 +1947,23 @@ QString recodeSelectionList(iVector includeVolume)
         else
             includeBool.append(true);
     }
-    return recodeSelectionList(includeBool);
+    return recodeSelectionList(includeBool, usePlusOneSyntax);
 }
 
-QString recodeSelectionList(bVector includeVolume)
+QString recodeSelectionList(bVector includeVolume, bool usePlusOneSyntax)
 {
     QString selectionString = "";
     int it=0;
+    int iOffset = 0;
+    if ( usePlusOneSyntax ) iOffset = +1;
     while ( it<includeVolume.size() )
     {
         if ( includeVolume[it] )
         {
-            int iLow  = it;
+            int iLow  = it + iOffset;
             while ( it<includeVolume.size() && includeVolume[it] )
                 it++;
-            int iHigh = it-1;
+            int iHigh = it-1 + iOffset;
             if ( iLow == iHigh )
             {
                 QString oneValue;  oneValue.setNum(iLow);

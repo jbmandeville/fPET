@@ -139,7 +139,7 @@ void SimWindow::getTableDataFile()
         return;
     else
     {
-        QString errorString = utilIO::readTableFile(fileName, _dataColumnNames, _dataTable);
+        QString errorString = utilIO::readTimeTableFile(fileName, _dataColumnNames, _dataTable);
         if ( !errorString.isEmpty() )
         {
             QMessageBox msgBox;
@@ -592,7 +592,6 @@ void SimWindow::changedSimulationStartingPoint()
     FUNC_ENTER;
     if ( !simStartsFromPlasma() )
     {
-//        _PETRTM.setSmoothingScaleMin(0.5);
         dVector RRTimeVector = _simulator.getTimeCourse();
         dVector RRVector;
         if ( simStartsFromDataFit() )
@@ -602,22 +601,10 @@ void SimWindow::changedSimulationStartingPoint()
         // LOESS: coarse (binned) RR
         double smoothingScale = 0.5;
         _quadLOESS.defineAndFit(RRTimeVector,RRVector, smoothingScale, true, true);
-        dVector CrFitCoarse, deriv2;
+        dVector CrFitCoarse;
         for (int jTime=0; jTime<_simulator.getNumberTimeBinsCoarse(); jTime++)
-            CrFitCoarse.append(_quadLOESS.getFitAtCentralPoint(jTime));
-
-        tk::spline spline;
-        spline.set_points(RRTimeVector,CrFitCoarse);    // currently it is required that X is already sorted
-
-        // LOESS: fine
-        int nTimeFine = _simulator.getNumberTimeBinsFine();
-        RRTimeVector.resize(nTimeFine);
-        for (int jTime=0; jTime<nTimeFine; jTime++)
-            RRTimeVector[jTime] = _simulator.getTimeFine(jTime);
-        dVector CrFitFine;
-        for (int jTime=0; jTime<nTimeFine; jTime++)
-            CrFitFine.append(qMax(0.,spline(RRTimeVector[jTime])));
-        _simulator.setCrFit(CrFitCoarse, CrFitFine);
+            CrFitCoarse.append(_quadLOESS(jTime));
+        _simulator.setCrFit(CrFitCoarse);
 
         enableComboBoxItem(_whichPlasmaPlot,6,true);
         enableComboBoxItem(_whichPlasmaPlot,7,true);
@@ -685,6 +672,10 @@ void SimWindow::changedModelType(int indexInBox)
         _PETRTM.setRTMModelType("rFRTM3New");
     else if ( indexInBox == RTM_rFRTM2New )
         _PETRTM.setRTMModelType("rFRTM2New");
+    else if ( indexInBox == RTM_fmFRTM3 )
+        _PETRTM.setRTMModelType("fmFRTM3");
+    else if ( indexInBox == RTM_fmFRTM2 )
+        _PETRTM.setRTMModelType("fmFRTM2");
     _PETRTM.setPrepared(false);
     updateAllGraphs();
 
@@ -708,8 +699,8 @@ void SimWindow::changedModelType(int indexInBox)
         _checkBoxTau2RefGraph->setVisible(true);
         _checkBoxTau2RefGraph->setText("1/k2' (=R1/k2)");
     }
-    _tau4AnalysisLabel->setVisible(_PETRTM.isFRTM());
-    _tau4Analysis->setVisible(_PETRTM.isFRTM());
+    _tau4AnalysisLabel->setVisible( _PETRTM.isFRTM() || _PETRTM.isForwardModel() );
+    _tau4Analysis->setVisible(      _PETRTM.isFRTM() || _PETRTM.isForwardModel() );
 }
 
 void SimWindow::createTargetPage()
@@ -823,6 +814,8 @@ void SimWindow::createTargetPage()
     _modelType->addItem("rFRTM2");
     _modelType->addItem("rFRTM3New");
     _modelType->addItem("rFRTM2New");
+    _modelType->addItem("fmFRTM3");
+    _modelType->addItem("fmFRTM2");
     enableComboBoxItem(_modelType,2,false);
 //    enableComboBoxItem(_modelType,5,false);  // xxx tmp
 //    enableComboBoxItem(_modelType,6,false);  // xxx tmp
@@ -1364,6 +1357,7 @@ void SimWindow::showTarget()
 
 void SimWindow::updatePlasmaGraph()
 {
+    FUNC_ENTER;
     static int whichColor=0;
     QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
                          Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
@@ -1438,10 +1432,12 @@ void SimWindow::updatePlasmaGraph()
         _plasmaPlot->setPointSize(5);
     _plasmaPlot->conclude(0,true);
     _plasmaPlot->plotDataAndFit(true);
+    FUNC_EXIT;
 }
 
 void SimWindow::updateReferenceGraph()
 {
+    FUNC_ENTER;
     // update the plot: RR
     _RRPlot->init();
     _RRPlot->setLegendOn(true);
@@ -1455,10 +1451,12 @@ void SimWindow::updateReferenceGraph()
 
     _RRPlot->conclude(0,true);
     _RRPlot->plotDataAndFit(true);
+    FUNC_EXIT;
 }
 
 void SimWindow::addSimulationRR(plotData *whichPlot)
 {
+    FUNC_ENTER;
     whichPlot->addCurve(0,"RR: simulation");
     if ( whichPlot->getNumberCurves() == 1 )
         whichPlot->setColor(Qt::red); // 1st curve
@@ -1474,6 +1472,7 @@ void SimWindow::addSimulationRR(plotData *whichPlot)
         yTAC[jt] = _simulator.getCrCoarse(jt);
     }
     whichPlot->setData(xTime,yTAC);
+    FUNC_EXIT;
 }
 void SimWindow::addFitRR(plotData *whichPlot)
 {
@@ -1489,7 +1488,7 @@ void SimWindow::addFitRR(plotData *whichPlot)
     for (int jt=0; jt<nTimeSim; jt++)
     {
         xTime[jt] = _simulator.getTimeCoarse(jt);
-        yTAC[jt]  = _quadLOESS.getFitAtCentralPoint(jt);
+        yTAC[jt]  = _quadLOESS(jt);
     }
     whichPlot->setData(xTime,yTAC);
 }
@@ -1513,6 +1512,7 @@ void SimWindow::addDataCurveRR(plotData *whichPlot)
 }
 void SimWindow::addSimulationTarget()
 {
+    FUNC_ENTER;
     if ( realDataAvailable() )
         _targetPlot->addCurve(0,"target: simulation");
     else
@@ -1531,7 +1531,7 @@ void SimWindow::addSimulationTarget()
         yTAC[jt]  = _simulator.getCtCoarse(jt);
     }
     _targetPlot->setData(xTime,yTAC);
-
+    FUNC_EXIT;
 }
 void SimWindow::addDataCurveTarget()
 {
@@ -1553,6 +1553,7 @@ void SimWindow::addDataCurveTarget()
 
 void SimWindow::updateTargetGraph()
 {
+    FUNC_ENTER;
     // update the plot
     _targetPlot->init();
     _targetPlot->setLegendOn(true);
@@ -1575,11 +1576,20 @@ void SimWindow::updateTargetGraph()
         xTime[jt] = _PETRTM.getReferenceRegion(false,0,jt).x;
 
     // add fit
+    FUNC_INFO << "add fit";
     _targetPlot->addCurve(0,"fit");
     _targetPlot->setLineThickness(2);
     _targetPlot->setColor(Qt::blue);
-    for (int jt=0; jt<nTime; jt++)
-        yTAC[jt] = _PETRTM.getFit(jt);
+    if ( _PETRTM.isForwardModel() )
+    {
+        for (int jt=0; jt<nTime; jt++)
+            yTAC[jt] = _PETRTM.getSimulationFit(0,jt);
+    }
+    else
+    {
+        for (int jt=0; jt<nTime; jt++)
+            yTAC[jt] = _PETRTM.getFit(jt);
+    }
     _targetPlot->setData(xTime,yTAC);
 
     // add RR
@@ -1614,6 +1624,7 @@ void SimWindow::updateTargetGraph()
 
     _targetPlot->conclude(0,true);
     _targetPlot->plotDataAndFit(true);
+    FUNC_EXIT;
 }
 
 void SimWindow::defineRTMModel()
@@ -1825,7 +1836,11 @@ void SimWindow::analyzeTAC()
     }
 
     // sigma2
-    double sigma = qSqrt(_PETRTM.getSigma2());
+    double sigma;
+    if ( _PETRTM.isForwardModel() )
+        sigma = qSqrt(_PETRTM.getSimulationSigma2(0));
+    else
+        sigma = qSqrt(_PETRTM.getSigma2());
     valueString.setNum(sigma,'g',3);
     _sigma->setText(valueString);
 
@@ -1923,7 +1938,7 @@ void SimWindow::changedNumberBins()
     if ( ok && numberBins != _simulator.getNumberBins() )
     {
         _simulator.setNumberBins(numberBins);
-        if ( _PETRTM.getNumberTimePointsInRun(0) != numberBins ) _PETRTM.setNumberTimePointsInRun(0,numberBins);
+        if ( _PETRTM.getNumberTimePointsInRun(0) != numberBins ) _PETRTM.setTimePointsInRun(0,numberBins);
         _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
         _binIndex->setRange(1,numberBins);
         updateAllGraphs();

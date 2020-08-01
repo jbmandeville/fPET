@@ -5,10 +5,12 @@
 #include <QVector>
 #include <QProcess>
 #include <QtMath>
+#include <QDebug>
 
 #define FUNC_ENTER qDebug() << Q_FUNC_INFO << "enter"
 #define FUNC_EXIT  qDebug() << Q_FUNC_INFO << "exit"
 #define FUNC_INFO  qDebug() << Q_FUNC_INFO
+#define FUNC_ERROR qDebug() << "Error in" << Q_FUNC_INFO
 
 #define PI 3.141592654
 #define PI_180 (PI/180.)
@@ -57,15 +59,18 @@ enum fileCategory
     category_TValue,
     category_signalValue,
     category_BPValue,
+    category_Relaxation,
     category_ADC,
     category_anisotropy,
     category_vector,
-    fileCategory_MAX
+    category_complex,
+    fileCategory_transient // files generated within the program but not saved
 };
 
-struct IPoint2D {union {int x; int lower;}; union {int y; int upper;}; };
-struct IPoint3D {int x, y, z;};
-struct IPoint4D {int x, y, z, t;};
+struct iPoint2D {union {int x; int lower;}; union {int y; int upper;}; };
+struct iPoint3D {int x, y, z;};
+struct iPoint4D {int x, y, z, t;};
+struct bPoint3D {bool x, y, z;};
 struct Point2D  {float x, y;};
 struct Point3D  {float x, y, z;};
 struct Point4D  {float x, y, z, t;};
@@ -82,11 +87,13 @@ typedef QVector<QChar>              cVector;
 typedef QVector<QString>            sVector;
 typedef QVector<double>             dVector;
 typedef QVector<float >             fVector;
-typedef QVector<IPoint2D>          i2Vector;
-typedef QVector<IPoint3D>          i3Vector;
+typedef QVector<iPoint2D>          i2Vector;
+typedef QVector<iPoint3D>          i3Vector;
+typedef QVector<dPoint2D>          d2Vector;
 typedef QVector<dPoint3D>          d3Vector;
 typedef QVector<fComplex>          fcVector;
 typedef QVector<dComplex>          dcVector;
+typedef QVector<Point3D>            f3Vector;
 typedef QVector<QVector<bool>>      bMatrix;
 typedef QVector<QVector<QChar>>     cMatrix;
 typedef QVector<QVector<int>>       iMatrix;
@@ -94,8 +101,9 @@ typedef QVector<QVector<float>>     fMatrix;
 typedef QVector<QVector<double>>    dMatrix;
 typedef QVector<QVector<fComplex>> fcMatrix;
 typedef QVector<QVector<Point3D>>  f3Matrix;
+typedef QVector<QVector<dPoint2D>> d2Matrix;
 typedef QVector<QVector<dPoint3D>> d3Matrix;
-typedef QVector<QVector<IPoint2D>> i2Matrix;
+typedef QVector<QVector<iPoint2D>> i2Matrix;
 typedef QVector<QVector<QVector<int>>>    iMatrix3;
 typedef QVector<QVector<QVector<double>>> dMatrix3;
 struct fVoxel {int x, y, z; float value; overlayColor color;};  // can hold a voxel location, value, and optionally a color for display
@@ -103,21 +111,22 @@ typedef QVector<fVoxel> VoxelSet;
 
 struct OVLFile
 {  // typical overlay-list format: [name] [path] [optional color]
-    IPoint3D _dimensions={0,0,0};  // keeps image dimensions (not always available)
+    iPoint3D dimensions={0,0,0};  // keeps image dimensions (not always available)
     QString name;                  // e.g. putamen
     QString path;                  // e.g. $TemplateDir/putamen.ovl
     overlayColor color = Color_Cyan;  // Attach a color to an overlay file
     int iAtlasRegionID;  // indicates region from atlas, with ID as given (e.g region 21); set to 0 for non-atlas regions
     VoxelSet voxelList;// vector of (x,y,z,value)
+    bool saved=true;
     bool loaded=false;
 };
 
 struct imageHeader
 { // all info to interpret a file should be stored in the header in order to facilitate voxel-reading in a different thread
     QString fileName;       // original file name (if read from file), including directory path
-    IPoint4D dim={0,0,0,0}; // # voxels in x, y, z, t
+    iPoint4D dim={0,0,0,0}; // # voxels in x, y, z, t
     dPoint4D resolution={0.,0.,0.,0.};    // resolutions in x, y, z
-    IPoint4D points={0,0,0,0};        // (nx, nx*ny, nx*ny*nz, nx*ny*nz*nt)
+    iPoint4D points={0,0,0,0};        // (nx, nx*ny, nx*ny*nz, nx*ny*nz*nt)
     dMatrix ijk_to_xyz;     // 4x4 transformation from data indices (i,j,k) to space (x,y,z)
     dMatrix xyz_to_ijk;     // 4x4 inverse transformation
     int byte_order;         // byte order 0 = Mac, 1 = PC
@@ -131,26 +140,27 @@ struct imageHeader
     float scaleOffset;      // offset for data; default 0
 };
 
-struct voxelStack
+struct timePointData
 {
-    fMatrix  f1;      // 4-dimensional data vector; allocated as an array of pointers to volumes; dimensions [time][i3d]
-    fcMatrix fc;      // 4-dimensional complex vector
-    f3Matrix f3;      // 4-dimensional 3-vector
-    iVector color;    // 3-dimensional color (for bitmaps/overlays)
-    bool empty=false; // if true, all data is zero
+    fVector  f1;            // 3-dimensional volume data vector [i3d]
+    fcVector fc;            // 3-dimensional complex vector
+    f3Vector f3;            // 3-dimensional 3-vector
+    dVector mcParameters={0.,0.,0.,0.,0.,0.};   // motion-correction parameters
 };
 
 // Define a structure for a stack of images
 struct imageData
 {
-    voxelStack voxels;
     imageHeader hdr;
+    QVector<timePointData> timePoints;  // allocated as a time vector per file
+    iVector color;                      // 3-dimensional color (for bitmaps/overlays)
+    bool empty=false;                   // if true, all data is zero
 
-//    IPoint4D dim={0,0,0,0}; // # voxels in x, y, z, w=t
+//    iPoint4D dim={0,0,0,0}; // # voxels in x, y, z, w=t
 //    Point4D resolution;    // resolutions in x, y, z, t
 //    Point4D origin;        // origins in x, y, z, t
 //    Point3D direction;     // directions in x, y, z
-//    IPoint4D points;       // (nx, nx*ny, nx*ny*nz, nx*ny*nz*nt)
+//    iPoint4D points;       // (nx, nx*ny, nx*ny*nz, nx*ny*nz*nt)
 //    Mat44 ijk_to_xyz;      // transformation from data indices (i,j,k) to space (x,y,z)
 //    Mat44 xyz_to_ijk;      // inverse transformation
 };
@@ -159,12 +169,19 @@ struct ROI_data
 {
     QString fileName;// Vector of file names for each run in the ROI
     QString name;    // some identifier
-    IPoint3D voxel;  // voxel for 1-point ROI
+    iPoint3D voxel;  // voxel for 1-point ROI
     double nspace;   // # points in space (non-integer due to potential non-binary voxel weights)
     double dt;       // time step
     double dof;
     dVector xTime;   // 1-dimensional data vector [itime]
     dVector ySignal; // 1-dimensional data vector [itime]
+};
+
+struct MCPackage // motion-correction package
+{
+    int iFile;                                  // file index
+    int iTime;                                  // volume index
+    dVector MCParameters={0.,0.,0.,0.,0.,0.};   // x,y,z,phiX,phiY,phiZ
 };
 
 namespace utilIO
@@ -187,17 +204,16 @@ namespace utilIO
     void swap_16( void *ptr );
     void swap_32( void *ptr );
 
-    inline int index3d(IPoint3D dim, IPoint3D voxel) {return voxel.z*dim.x*dim.y + voxel.y*dim.x + voxel.x;}
-    inline int index3d(IPoint3D dim, int iX, int iY, int iZ) {return iZ*dim.x*dim.y + iY*dim.x + iX;}
+    inline int index3d(iPoint3D dim, iPoint3D voxel) {return voxel.z*dim.x*dim.y + voxel.y*dim.x + voxel.x;}
+    inline int index3d(iPoint3D dim, int iX, int iY, int iZ) {return iZ*dim.x*dim.y + iY*dim.x + iX;}
 
-    int readOverlayFile(VoxelSet &voxelList, QString fileName, overlayColor color, IPoint3D dimSpace);
+    int readOverlayFile(VoxelSet &voxelList, QString fileName, overlayColor color, iPoint3D dimSpace);
 
     void delayMS( int millisecondsToWait );
 
     QString readTimeTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
-    QString readTableFile(QString fileName, QStringList &columnNames, dMatrix &table);
-}
 
+}
 
 namespace tk
 {
@@ -235,7 +251,6 @@ public:
     dVector l_solve(const dVector& b) const;
     dVector lu_solve(const dVector& b,bool is_lu_decomposed=false);
 };
-
 
 // spline interpolation
 class spline
@@ -281,6 +296,13 @@ namespace utilMath
 #define SQR(a) ((a) == 0.0 ? 0.0 : (a)*(a))
 #define NMAT 3
 
+    dComplex complexMultiply(dComplex dc1, dComplex dc2, bool star);
+    double computePhase(dComplex dc);
+    double computeAmplitude(dComplex dc);
+    double dotProduct(dVector v1, dVector v2);
+    double dotProduct(dPoint3D v1, dPoint3D v2);
+    void FFTW1D_Volume( iPoint3D dim, dcVector &volume, int iDimFFT, bool forward );
+
     Mat44 invertMat44(Mat44 matrix44 );
     bool dInvertSquareMatrix(dMatrix &dSquareMatrix );
 
@@ -290,7 +312,8 @@ namespace utilMath
     double inverse_Gauss(double x, double y, double fwhm);
     void swapX( dComplex *dcData, int lDim, int lAdd );
     bool ParabolicInterpolation(double *xParabola, double *yParabola, double &xMax, double &yMax);
-    void fuzzyBinning(double value, double min, double max, int nBins, IPoint2D &iBin, dPoint2D &weightBin );
+    void fuzzyBinning(double value, double min, double max, int nBins, iPoint2D &iBin, dPoint2D &weightBin );
+    double polynomialLegendre(int iPoly, double x);
 
     void matrixProduct( dMatrix X1, dMatrix X2, dMatrix &X1X2 );
     void matrixProductTranspose1( dMatrix X1, dMatrix X2, dMatrix &X1X2 );
@@ -311,6 +334,7 @@ namespace utilMath
     void topDownMergeSort(dVector &array);
     void topDownSplitMerge(int iBegin, int iEnd, dVector &array, dVector &arrayWorking);
     void topDownMerge(int iBegin, int iMiddle, int iEnd, dVector &array, dVector &arrayWorking);
+    inline double medianValue(dVector array) {topDownMergeSort(array); return array[array.size()/2];}
     void copyArray(int iBegin, int iEnd, dVector &array, dVector &arrayWorking);
 
     void topDownMergeSort(dVector &array, iVector &indexArray);
@@ -318,15 +342,15 @@ namespace utilMath
     void topDownMerge(int iBegin, int iMiddle, int iEnd, dVector &array, dVector &arrayWorking, iVector &indexArray, iVector &indexWorking);
     void copyArray(int iBegin, int iEnd, dVector &array, dVector &arrayWorking, iVector &indexArray, iVector &indexWorking);
 
-    VoxelSet createVoxelList(int iThread, int nThreads, IPoint3D dim);
+    VoxelSet createVoxelList(int iThread, int nThreads, iPoint3D dim);
 }
 namespace utilString
 {
     void errorMessage(QString errorText);
-    int decodeSelectionList(QString list, iVector &includeVolume);
-    int decodeSelectionList(QString list, bVector &includeVolume);
-    QString recodeSelectionList(iVector includeVolume);
-    QString recodeSelectionList(bVector includeVolume);
+    int decodeSelectionList(QString inputList, bool usePlusOneSyntax, iVector &includeVolume);
+    int decodeSelectionList(QString inputList, bool usePlusOneSyntax, bVector &includeVolume);
+    QString recodeSelectionList(iVector includeVolume, bool usePlusOneSyntax);
+    QString recodeSelectionList(bVector includeVolume, bool usePlusOneSyntax);
     void replaceEnvironmentVariables(QStringList &inputStringList);
     QString replaceEnvironmentVariables(QString inputString);
     QString insertEnvVariableTemplateDir(QString inputString);

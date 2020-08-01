@@ -85,7 +85,7 @@ int PETRTM::readTimeModel(QString fileName)
         {
             QString smoothingString = stringList.at(1);
             bool ok;
-            _smoothingScaleMin = smoothingString.toDouble(&ok);
+            _smoothingScale = smoothingString.toDouble(&ok);
             if ( !ok )
             {
                 qInfo() << "Error reading the value for the smoothing string:" << smoothingString;
@@ -194,9 +194,9 @@ int PETRTM::readTimeModel(QString fileName)
     }
 
     // define conditions at the end, when everything else is established
-    prepare();  // this is needed to avoid killing conditions due to undefined basis functions
+//    prepare();  // this is needed to avoid killing conditions due to undefined basis functions
     _petConditionsFromTimeModelFile = allConditions;
-    definePETConditions(allConditions);
+//    updateConditions(allConditions);
 
     return(0);
 }
@@ -712,61 +712,9 @@ dVector PETRTM::getEquilibrationVector(int iFile)
     // OR 2) Fit k4 using fixed BPnd (saved from 1st pass in _BPndForIterations)
     int nTimeInRun = _dtBinsSec[iFile].size();
     dVector equilibrationVector;  equilibrationVector.fill(0.,nTimeInRun);
-//    qDebug() << "getEquilibrationVector tau4" << _tau4[0];
     for (int jt=0; jt<nTimeInRun; jt++)
         equilibrationVector[jt] = 1./_tau4[iFile] * (1. + _BPndForIterations[iFile] );
     return equilibrationVector;
-}
-
-dVector PETRTM::getBPndVector(int iFile)
-{ // get value and error (into x and y)
-    int nTimeInRun = _dtBinsSec[iFile].size();
-    dVector BPndVector;  BPndVector.fill(0.,nTimeInRun);
-    // Baseline k2 and k2a define baseline BPnd
-    dPoint2D BP;        BP.x = BP.y = 0.;
-    // Baseline k2 and k2a
-    int iCoeffk2  = _k2EventCoefficient[iFile];
-    int iCoeffk2a = _k2aEventCoefficient[iFile];
-    if ( iCoeffk2 < 0 || iCoeffk2a < 0 ) return BPndVector;
-
-    double k2     = getBeta(iCoeffk2);
-    dVector k2aVector; k2aVector.resize(nTimeInRun);
-    for (int jt=0; jt<nTimeInRun; jt++)
-        k2aVector[jt] = getBeta(iCoeffk2a);
-
-    // Now challenges
-    for ( int jChallenge=0; jChallenge<_maxChallenges; jChallenge++ )
-    {
-        if ( isGoodChallengeInRun(jChallenge, iFile) )
-        {
-            QChar challengeID = _challengeEventID[jChallenge];
-            int iCoeffChallenge = getEventCoefficient(challengeID);
-            if ( iCoeffChallenge < 0 ) continue;  // should never occur
-            dVector shape;
-            createChallengeShape(iFile, jChallenge, shape);
-            for (int jt=0; jt<shape.size(); jt++)
-                k2aVector[jt] += getBeta(iCoeffChallenge) * shape[jt];
-        }
-    }
-    bool allValid = k2 > 0.;
-    for (int jt=0; jt<nTimeInRun; jt++)
-        allValid &= k2aVector[jt] > 0.;
-    if ( allValid )
-    {
-        if ( isFRTMNew() )
-        {
-            for (int jt=0; jt<nTimeInRun; jt++)
-//                BPndVector[jt] = _tau4[iFile] * k2aVector[jt]/k2;
-                BPndVector[jt] = k2aVector[jt]/k2;
-
-        }
-        else
-        {
-            for (int jt=0; jt<nTimeInRun; jt++)
-                BPndVector[jt] = k2 / k2aVector[jt] - 1;
-        }
-    }
-    return BPndVector;
 }
 
 dPoint2D PETRTM::getBPndVersusTime(int iFile, int iTime)  // VERY INEFFICIENT METHOD: EVERY POINT ITIME CALLS createChallengeShape
@@ -808,30 +756,12 @@ dPoint2D PETRTM::getBPndVersusTime(int iFile, int iTime)  // VERY INEFFICIENT ME
     return BP;
 }
 
-dPoint2D PETRTM::getValueAndErrorForCurrentCondition()
-{   // Get "k2" for the current condition. k2 is a parameter stored in "beta", whereas conditions are in "effectSize"
-    // For a single condition, pointing to a coefficient, return beta. Otherwise return the effect size
-    dPoint2D result;
-    int iCoeff = getOnlyCoefficientInCondition(getCurrentCondition());
-    if ( iCoeff < 0 )
-    { // this is not a condition on a single coefficient
-        result.x = getEffectSize();
-        result.y = getEffectStDev();
-    }
-    else
-    {
-        result.x = getBeta(iCoeff);
-        result.y = getSEM(iCoeff);
-    }
-    return result;
-}
-
 dPoint2D PETRTM::getBPndInCurrentCondition()
 {
-//    qDebug() << "PETRTM::getBPndInCurrentCondition enter";
+//    FUNC_ENTER;
     dPoint2D BP;  BP.x = BP.y = 0.;
 
-    updateConditions();
+    updateConditions(getConditionString());
 
     int iCondition = getCurrentCondition();
     // This condition should be composed entirely of k2a and challenge events.
@@ -899,7 +829,7 @@ dPoint2D PETRTM::getBPndInCurrentCondition()
         }
     }
     BP.y = qSqrt(BP.y);
-//    qDebug() << "PETRTM::getBPndInCurrentCondition exit" << BP.x << BP.y;
+//    FUNC_EXIT << BP.x << BP.y;
     return BP;
 }
 
@@ -914,7 +844,6 @@ dPoint2D PETRTM::averageParameter(iVector iCoeffVector)
         if ( iCoeff < 0 ) return result;
         result.x = getBeta(iCoeff);
         result.y = getVar(iCoeff);
-//        qDebug() << "PETRTM::averageParameter" << iCoeff << result.x;
         return result;
     }
     else
@@ -940,7 +869,10 @@ dPoint2D PETRTM::averageParameter(iVector iCoeffVector)
 
 double PETRTM::getBP0InRun(int iRun)
 { // make this more efficient
-    if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 ) return 0.;
+    if ( isForwardModel() )
+        return _simulator[iRun].getBP0();
+    else if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 )
+        return 0.;
 
     double BPnd = 0.;
     double k2  = getBeta(_k2EventCoefficient[iRun]);
@@ -953,12 +885,12 @@ double PETRTM::getBP0InRun(int iRun)
         {
 //            BPnd = _tau4[iRun] * k2a / k2;
             BPnd = k2a / k2;
-//            qDebug() << "FRTMNew: k2a =" << k2a << "k2 =" << k2 << "_tau4 =" << _tau4[iRun] << "BPnd =" << BPnd;
+//            FUNC_INFO << "FRTMNew: k2a =" << k2a << "k2 =" << k2 << "_tau4 =" << _tau4[iRun] << "BPnd =" << BPnd;
         }
         else
         {
             BPnd = k2/k2a - 1.;
-//            qDebug() << "FRTMOld: k2a =" << k2a << "k2 =" << k2 << "BPnd =" << BPnd;
+//            FUNC_INFO << "FRTMOld: k2a =" << k2a << "k2 =" << k2 << "BPnd =" << BPnd;
         }
     }
     return BPnd;
@@ -966,7 +898,10 @@ double PETRTM::getBP0InRun(int iRun)
 
 double PETRTM::getTau4InRun(int iRun)
 { // "k2a" = k2 * k4 * BPnd, so 1/k4 = k2/k2a * BPnd
-    if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 ) return 0.;
+    if ( isForwardModel() )
+        return _simulator[iRun].getTau4();
+    else if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 )
+        return 0.;
 
     double tau4;
     if ( isFRTMFitk4() )
@@ -977,12 +912,12 @@ double PETRTM::getTau4InRun(int iRun)
             tau4 = 0.;
         else
             tau4 = k2 / k2a;
-//        qDebug() << "PETRTM::getTau4InRun ongoing" << tau4;
+//        FUNC_INFO << "PETRTM::getTau4InRun ongoing" << tau4;
     }
     else if (_fitk4UsingFixedBPnd ) // k4 fitting has been completed, so return saved value
     {
         tau4 = _tau4[iRun];
-//        qDebug() << "PETRTM::getTau4InRun completed" << tau4;
+//        FUNC_INFO << "PETRTM::getTau4InRun completed" << tau4;
     }
     else if ( isFRTM() )
         tau4 = _tau4[iRun];
@@ -1083,6 +1018,9 @@ void PETRTM::setTau2Ref(int iRun, double tau2Ref)
 
 double PETRTM::getTau2RefInRun(int iRun)
 { // tau2_ref = R1 / k2
+    if ( isForwardModel() )
+        return _simulator[iRun].getTau2Ref();
+
     double tau2Ref=0.;
     if ( isRTM3() )
     { // then tau2Ref is a derived parameter
@@ -1105,6 +1043,13 @@ double PETRTM::getTau2RefInRun(int iRun)
 
 dPoint2D PETRTM::getk2RefInRun(int iRun)
 { // k2_ref = k2 / R1
+    if ( isForwardModel() )
+    {
+        dPoint2D tau2Ref = {0.,0.};
+        tau2Ref.x = _simulator[iRun].getTau2Ref();
+        return tau2Ref;
+    }
+
     dPoint2D k2Ref;  k2Ref.x = k2Ref.y = 0.; // save value and error in x,y
     if ( isRTM3() )
     {
@@ -1132,6 +1077,13 @@ dPoint2D PETRTM::getk2RefInRun(int iRun)
 
 dPoint2D PETRTM::getR1InRun(int iRun)
 {
+    if ( isForwardModel() )
+    {
+        dPoint2D R1 = {0.,0.};
+        R1.x = _simulator[iRun].getR1();
+        return R1;
+    }
+
     dPoint2D R1;  R1.x = R1.y = 0.; // save value and error in x,y
     if ( isRTM3() )
     {
@@ -1139,11 +1091,24 @@ dPoint2D PETRTM::getR1InRun(int iRun)
         R1.x = getBeta(_R1EventCoefficient[iRun]);
         R1.y = getSEM(_R1EventCoefficient[iRun]);
     }
+    else
+    {  // R1 = k2/k2Ref
+        dPoint2D k2    = getk2InRun(iRun);
+        dPoint2D k2Ref = getk2RefInRun(iRun);
+        dPoint2D R1;  R1.x = k2.x / k2Ref.x;  R1.y = R1.x * qSqrt( SQR(k2.y/k2.x) + SQR(k2Ref.y/k2Ref.x) );
+        return R1;
+    }
     return R1;
 }
 
 dPoint2D PETRTM::getk2InRun(int iRun)
 {
+    if ( isForwardModel() )
+    {
+        dPoint2D k2 = {0.,0.};
+        k2.x = _simulator[iRun].getk2();
+        return k2;
+    }
     dPoint2D k2;  k2.x = k2.y = 0.; // save value and error in x,y
     k2.x = getBeta(_k2EventCoefficient[iRun]);
     k2.y = getSEM(_k2EventCoefficient[iRun]);
@@ -1152,6 +1117,12 @@ dPoint2D PETRTM::getk2InRun(int iRun)
 
 dPoint2D PETRTM::getk2aInRun(int iRun)
 {
+    if ( isForwardModel() )
+    {
+        dPoint2D k2a = {0.,0.};
+        k2a.x = _simulator[iRun].getk2a();
+        return k2a;
+    }
     dPoint2D k2a;  k2a.x = k2a.y = 0.; // save value and error in x,y
     k2a.x = getBeta(_k2aEventCoefficient[iRun]);
     k2a.y = getSEM(_k2aEventCoefficient[iRun]);
@@ -1233,11 +1204,16 @@ void PETRTM::setTissueVector(dMatrix tissueRegion)
     _tissRegionRaw = tissueRegion;
     _tissRegion    = tissueRegion;
 
-    if ( _smoothingScaleMin != 0. )
-        fitLoessCurve(_tissRegion);  // this replaces the tissue region with the fit
+    if ( _smoothingScale != 0. )
+        fitLoessCurve(_tissRegion);  // xxx
     _tissRegionDeriv = _tissRegion;  // this ensure dimensions are correct
     if ( (isFRTM() && _tau4Default != 0.) || _PETWeightingModel == Weights_noUptake )
-        differentiateByRun(_tissRegionDeriv); // rFRTM requires a tissue derivative for the convolution term
+        differentiateByRun(_tissRegionDeriv); // rFRTM requires a tissue derivative for the convolution term'
+    else if ( isForwardModel() )
+    {
+        for (int jRun=0; jRun<_nRuns; jRun++)
+            _simulator[jRun].setCtData(tissueRegion[jRun]);
+    }
     mutex.unlock();
     setPrepared(false);
 }
@@ -1248,27 +1224,27 @@ dPoint2D PETRTM::getReferenceRegion(bool useFit, int iRun, int iTime)
 //    returnValue.x= getTimeInRun(iRun,iTime);
     returnValue.x = _timeInRun[iRun][iTime];
     if ( useFit )
-        returnValue.y = _refRegion[iRun][iTime];     // could be raw or fit
+        returnValue.y= _refRegion[iRun][iTime];     // could be raw or fit
     else
-        returnValue.y = _refRegionRaw[iRun][iTime];  // always raw
+        returnValue.y= _refRegionRaw[iRun][iTime];  // always raw
     return returnValue;
 }
 dPoint2D PETRTM::getTissueRegion(bool useFit, int iRun, int iTime)
 {
     dPoint2D returnValue;
-//    returnValue.x = getTimeInRun(iRun,iTime);
+//    returnValue.x= getTimeInRun(iRun,iTime);
     returnValue.x = _timeInRun[iRun][iTime];
     if ( useFit )
-        returnValue.y = _tissRegion[iRun][iTime];    // could be either raw or fit
+        returnValue.y= _tissRegion[iRun][iTime];    // could be either raw or fit
     else
-        returnValue.y = _tissRegionRaw[iRun][iTime]; // always raw
+        returnValue.y= _tissRegionRaw[iRun][iTime]; // always raw
     return returnValue;
 }
 
 dPoint2D PETRTM::getReferenceRegionTimesR1(int iRun, int iTime)
 { // legacy function (xxx jbm)
     dPoint2D returnValue;
-//    returnValue.x = getTimeInRun(iRun,iTime);
+//    returnValue.x= getTimeInRun(iRun,iTime);
     returnValue.x = _timeInRun[iRun][iTime];
 
     if ( isRTM3() )
@@ -1307,19 +1283,16 @@ dPoint2D PETRTM::getReferenceRegionTimesR1(int iRun, int iTime)
 
 void PETRTM::defineFrameInterpolation(int iRun)
 {
-//    qDebug() << "defineFrameInterpolation enter" << iRun << _binSplit.size();
+//    FUNC_ENTER << iRun << _binSplit.size();
     // First find the minimum bin width
     int nTimeInRun = _dtBinsSec[iRun].size();
-//    qDebug() << "defineFrameInterpolation 1" << _binSplit[iRun].size() << nTimeInRun;
     if ( _binSplit[iRun].size() != nTimeInRun )   _binSplit[iRun].resize(nTimeInRun);
-//    qDebug() << "defineFrameInterpolation 2" << _dtBinsSec[iRun];
     _minBin[iRun]=1e6;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
         _binSplit[iRun][jt].clear();
          if ( _dtBinsSec[iRun][jt] < _minBin[iRun] ) _minBin[iRun] = _dtBinsSec[iRun][jt];
     }
-//    qDebug() << "defineFrameInterpolation minBin" << _minBin[iRun];
     int iBinFine=0;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
@@ -1337,12 +1310,12 @@ void PETRTM::defineFrameInterpolation(int iRun)
                 _binSplit[iRun][jt].append(iBinFine);
         }
     }
-//    for (int jt=0; jt<nTimeInRun; jt++)
-//        qDebug() << "binSplit[" << jt << "] =" << _binSplit[iRun][jt];
-//    qDebug() << "bdefineFrameInterpolation exit";
+//    FUNC_INFO << "minBin" << _minBin[iRun];
+//    FUNC_EXIT << _binSplit[iRun];
 }
 dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
 {
+//    FUNC_ENTER;
     int nTime = _dtBinsSec[iRun].size();
     dVector tissueFine;
     for (int jt=0; jt<nTime; jt++)
@@ -1395,12 +1368,14 @@ dVector PETRTM::interpolateTissueVector(int iRun, dVector tissueVector)
             }
         }
     }
-//    qDebug() << "input tissue vector" << tissueVector;
-//    qDebug() << "fine  tissue vector" << tissueFine;
+//    FUNC_EXIT << tissueVector;
+//    FUNC_EXIT << tissueFine;
+//    FUNC_EXIT;
     return tissueFine;
 }
 dVector PETRTM::combineFineTissueVector(int iRun, dVector tissueFine)
 {
+//    FUNC_ENTER;
     int nTime = _dtBinsSec[iRun].size();
     dVector tissueVector;  tissueVector.resize(nTime);
     for (int jt=0; jt<nTime; jt++)
@@ -1414,6 +1389,7 @@ dVector PETRTM::combineFineTissueVector(int iRun, dVector tissueFine)
         }
         tissueVector[jt] = sum / static_cast<double>(nSplit);
     }
+//    FUNC_EXIT;
     return tissueVector;
 }
 double PETRTM::interpolateNewtonDividedDifferencesQuad(double x, double x0, double x1, double x2, double f0, double f1, double f2)
@@ -1425,6 +1401,7 @@ double PETRTM::interpolateNewtonDividedDifferencesQuad(double x, double x0, doub
 
 void PETRTM::setTimeBinsSec(int iRun, iVector timeBinsSec)
 {
+//    FUNC_ENTER;
     if ( iRun < _nRuns && iRun < _refRegion.size() )
     {
         if ( timeBinsSec.size() != _refRegion[iRun].size() )
@@ -1432,6 +1409,7 @@ void PETRTM::setTimeBinsSec(int iRun, iVector timeBinsSec)
         else
         {
             _dtBinsSec[iRun] = timeBinsSec;
+            _simulator[iRun].setDurationBins(_dtBinsSec[iRun]);
             defineFrameInterpolation(iRun);
             for (int jt=0; jt<timeBinsSec.size(); jt++)
                 _timeInRun[iRun][jt] = getTimeInRun(iRun, jt);
@@ -1440,6 +1418,7 @@ void PETRTM::setTimeBinsSec(int iRun, iVector timeBinsSec)
     else
         qFatal("Error: attempting to set time bins for non-existent run.");
     setPrepared(false);
+//    FUNC_EXIT;
 }
 
 void PETRTM::setReferenceRegionFromTableColumn(int iColumn)
@@ -1466,7 +1445,7 @@ void PETRTM::setReferenceRegion(iMatrix timeBinsSec, dMatrix referenceRegionRaw)
     setNumberRuns(nRuns);
     for (int jRun=0; jRun<nRuns; jRun++)
     {
-        setNumberTimePointsInRun(jRun,referenceRegionRaw[jRun].size());
+        setTimePointsInRun(jRun,referenceRegionRaw[jRun].size());
         setTimeBinsSec(jRun,timeBinsSec[jRun]);
         int nTimeInRun   = _dtBinsSec[jRun].size();
         for (int jt=0; jt<nTimeInRun; jt++)
@@ -1486,8 +1465,12 @@ void PETRTM::setReferenceRegion(dMatrix referenceRegionRaw)
 void PETRTM::updateReferenceRegion()
 {
     _refRegion = _refRegionRaw;
-    if ( _smoothingScaleMin != 0. )
+    if ( _smoothingScale != 0. )
+    {
         fitLoessCurve(_refRegion);
+        for (int jRun=0; jRun<_nRuns; jRun++)
+            _simulator[jRun].setCrFit(_refRegion[jRun]);
+    }
     _refRegionIntegral = _refRegion;
     _refRegionDeriv    = _refRegion;
     integrateByRun(_refRegionIntegral);
@@ -1537,20 +1520,22 @@ QString PETRTM::createConditions()
             conditions.append(' ');
         }
     }
-    definePETConditions(conditions);
+    updateConditions(conditions);
     setCurrentCondition(0);
     return conditions;
 }
 
-void PETRTM::updateConditions()
+void PETRTM::updateConditions(QString conditionString)
 {
-    countEvents();  // updates coefficient arrays
-    QString conditionString = getConditionString();
+    int nCoeff = countEvents();  // updates coefficient arrays
+//    FUNC_ENTER << nCoeff;
     definePETConditions(conditionString);
+//    FUNC_EXIT;
 }
 
 void PETRTM::definePETConditions( QString conditionString )
 {
+//    FUNC_ENTER << conditionString << _nCoeff << getNumberTimePoints();
     defineConditions(conditionString);
 
     // The rest of this function helps to turn BPnd into a "meta-GLM parameter"
@@ -1608,6 +1593,7 @@ void PETRTM::definePETConditions( QString conditionString )
     }
     // Potentially reset the current condition
     if ( getCurrentCondition() >= getNumberConditions() ) setCurrentCondition(0);
+//    FUNC_EXIT;
 }
 
 int PETRTM::getNumberChallenges()
@@ -1824,6 +1810,7 @@ void PETRTM::setNumberRuns(int nFiles)
         _binSplit.resize(_nRuns);
         _table.resize(_nRuns);     // [_nRuns][nTimeInRun][_nColumns]
         _quadLOESS.resize(_nRuns);     // nTimeInRun
+        _simulator.resize(_nRuns);     // nTimeInRun
         _columnNames.resize(_nRuns);
 
         _refRegion.resize(_nRuns);
@@ -1969,9 +1956,6 @@ int PETRTM::readTimeBinsFile(int iRun, QString fileName)
         timeBinsSec[jt] = static_cast<int>(_table[iRun][jt][0]);
     setTimeBinsSec(iRun,timeBinsSec);
 
-    if ( _smoothingScaleMin != 0. )
-        _quadLOESS[iRun].define(_timeInRun[iRun],_smoothingScaleMin);
-
     setPrepared(false);
 
     return(0);
@@ -2009,8 +1993,8 @@ void PETRTM::saveTimeModelFiles(QString dirName, QStringList dataFileList)
         out << "brain-region " << _brainRegionName << "\n";
 
     // Smoothing scale
-    if ( _smoothingScaleMin != 0. )
-        out << "smoothing-scale " << _smoothingScaleMin << "\n";
+    if ( _smoothingScale != 0. )
+        out << "smoothing-scale " << _smoothingScale << "\n";
 
     // weighting model
     if ( _PETWeightingModel == Weights_11C )
@@ -2243,6 +2227,8 @@ void PETRTM::setChallengeRun(int indexChallenge, int indexStimulus, int iRun)
 void PETRTM::setChallengeOnset(int indexChallenge, int indexStimulus, double time)
 {
     _challengeOn[indexChallenge][indexStimulus] = time;
+    int iRun = getChallengeRun(indexChallenge,indexStimulus);
+    _simulator[iRun].setChallengeTime(time);
     setPrepared(false);
 }
 void PETRTM::setChallengeOffset(int indexChallenge, int indexStimulus, double time)
@@ -2269,7 +2255,7 @@ bool PETRTM::getFrameStatus()
     return allFilesRead;
 }
 
-void PETRTM::setNumberTimePointsInRun(int iRun, int nTime)
+void PETRTM::setTimePointsInRun(int iRun, int nTime)
 {
     if ( iRun<0 || iRun >=_nRuns )
     {
@@ -2304,11 +2290,12 @@ void PETRTM::setNumberTimePointsInRun(int iRun, int nTime)
 
 void PETRTM::prepare()
 {
+//    FUNC_ENTER;
     // Perhaps do error checking here first?
 //    updateReferenceRegion();
 
     // For iterative models, add the 1st fit to the "prepare" step
-    bool multiPass = isFRTM() || isSRTMReg() || _PETWeightingModel == Weights_noUptake;
+    bool multiPass = isFRTM() || isSRTMReg() || (_PETWeightingModel == Weights_noUptake) || isForwardModel();
     if ( multiPass )
     {
         if ( _PETWeightingModel == Weights_noUptake )
@@ -2317,6 +2304,7 @@ void PETRTM::prepare()
             createAllBasisFunctions();
             fitData(_tissRegion);
             setWeightingModel(Weights_noUptake);  // now weighting model has BPnd info
+            createAllBasisFunctions();
         }
         else if ( isSRTMReg() )
         {
@@ -2324,6 +2312,7 @@ void PETRTM::prepare()
             createAllBasisFunctions();
             fitData(_tissRegion);
             setRTMModelType(RTM_SRTM2Fit);  // now SRTMReg has BPnd info
+            createAllBasisFunctions();
         }
         else if ( isFRTM() )
         {
@@ -2334,19 +2323,49 @@ void PETRTM::prepare()
                 setRTMModelType(RTM_SRTM2);
             createAllBasisFunctions();
             fitData(_tissRegion);
-//            qDebug() << "PETRTM::prepare, BP0 =" << getBP0InRun(0);
             setRTMModelType(saveModel); // now FRTM has BPnd info
+            createAllBasisFunctions();
+        }
+        else if ( isForwardModel() )
+        {
+            RTMModelTypes saveModel = _modelRTM;
+            if ( _modelRTM == RTM_fmFRTM3 )
+                setRTMModelType(RTM_SRTM3);
+            else
+                setRTMModelType(RTM_SRTM2);
+            createAllBasisFunctions();
+            fitData(_tissRegion);
+            setRTMModelType(saveModel); // now forward model has SRTM information
         }
     }
-    // Now prepare the model using prior information from above if needed
-    createAllBasisFunctions();
+    else // not multi-pass (e.g., SRTM)
+        createAllBasisFunctions();
+//    FUNC_EXIT;
+}
+
+void PETRTM::fitByForwardModel(dMatrix &yFit)
+{
+    if ( !isForwardModel() ) return;
+
+    for (int jRun=0; jRun<_nRuns; jRun++)
+    {
+        double BP0 = _BPndForIterations[jRun];
+        if ( isRTM3() )
+            _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, true);
+        else
+            _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, false);
+        yFit[jRun] = _simulator[jRun].getCtFit();
+    }
+
 }
 
 void PETRTM::fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
 {
     // iterative methods
     bool fitByIteration = (isFRTM() && _tau4Default != 0.);
-    if (  fitByIteration )
+    if ( isForwardModel() )
+        fitByForwardModel(yFit);
+    else if (  fitByIteration )
         fitDataByGLMIterationForConsistency(timeSeriesVector, yFit);
     else
         fitDataByGLM(timeSeriesVector, yFit); // 1-step
@@ -2464,11 +2483,9 @@ void PETRTM::fitWLSForIteration(dVector &data)
     {
         for (int jRun=0; jRun<_nRuns; jRun++)
             _BPndForIterations[jRun] = getBP0InRun(jRun);
-//        qDebug() << "save BPnd for iterations" <<_BPndForIterations[0];
     }
 
 }
-
 
 void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
 {   // Fit by GLM iteration when linear parameters determine a value used in a non-linear part of the expression.
@@ -2507,7 +2524,7 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
 
         double sigma2 = getSigma2();
         double diff = qAbs(sigma2-lastSigma2)/lastSigma2 * 100.;
-//        qDebug() << "lastSigma2, sigma2, diff" << lastSigma2 << sigma2 << diff;
+//        FUNC_INFO << "lastSigma2, sigma2, diff" << lastSigma2 << sigma2 << diff;
         lastSigma2 = sigma2;
         moreIterations = diff > 0.01;
 //        goodIteration = lastSigma2 > sigma2;
@@ -2534,6 +2551,7 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
 
     if ( !goodIteration )
         _nIterations *= -1;
+    /*
     else
     {
         // Attach the fit.
@@ -2547,14 +2565,14 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
             }
         }
     }
-//    qDebug() << "PETRTM::fitDataByGLMIterationForConsistency exit";
+    */
+//    FUNC_EXIT;
 }
 
 void PETRTM::fitDataByGLMPlusLineScan(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
 {   // Fit by GLM plus a line scan on an additional parameter.
     // E.g., use this with rFRTM and a fixed value of k4 (or BPnd) plus a line scan on BPnd (or k4)
     // Assume that the TAC has already been fit by an initial model at this point
-//    qDebug() << "PETRTM::fitDataByGLMPlusLineScan enter" << isFRTM();
     // Copy the ROI input data into a simple vector
     dVector data = makeVectorFromROIData(timeSeriesVector);
 
@@ -2567,11 +2585,7 @@ void PETRTM::fitDataByGLMPlusLineScan(QVector<ROI_data> timeSeriesVector, dMatri
             double minimumIncrement = 0.1;
             double sigma2;
             while ( increment > minimumIncrement )
-            {
                 sigma2 = lineScanTau4(jRun, increment, data);
-//                qDebug() << "lineScan1D returns" << _tau4[jRun] << sigma2;
-            }
-//            qDebug() << "PETRTM::fitDataByGLMPlusLineScan result: " << _tau4[jRun];
         }
     }
     else
@@ -2585,9 +2599,7 @@ void PETRTM::fitDataByGLMPlusLineScan(QVector<ROI_data> timeSeriesVector, dMatri
             while ( increment > minimumIncrement )
             {
 //                sigma2 = lineScan1D(jRun, _BPndForIterations, increment, data);
-//                qDebug() << "lineScan1D returns" << _tau4[jRun] << sigma2;
             }
-//            qDebug() << "PETRTM::fitDataByGLMPlusLineScan result: " << _BPndForIterations[jRun];
         }
     }
 
@@ -2601,7 +2613,6 @@ void PETRTM::fitDataByGLMPlusLineScan(QVector<ROI_data> timeSeriesVector, dMatri
             yFit[jRun][jt] = getFit(iTimeTotal);
         }
     }
-//    qDebug() << "PETRTM::fitDataByGLMPlusLineScan exit";
 }
 double PETRTM::updateLineScanFit(dVector data)
 {
@@ -2617,28 +2628,24 @@ double PETRTM::lineScanTau4( int iRun, double &valueIncrement, dVector data )
     double valueCenter = _tau4[iRun];
     // Save the initial cost function.
     double sigma2Center = updateLineScanFit(data);
-//    qDebug() << "lineScan1D enter" << _tau4[iRun] << valueIncrement << sigma2Center;
     xParabola[1] = valueCenter;
     yParabola[1] = sigma2Center;
 
     // test the - direction
     double valueLow = valueCenter - valueIncrement;
     _tau4[iRun] = valueLow;  double sigma2Low = updateLineScanFit(data);
-//    qDebug() << "lineScan1D low" << _tau4[iRun] << sigma2Low << getSigma2();
     xParabola[0] = valueLow;
     yParabola[0] = sigma2Low;
 
     // test the + direction
     double valueHigh = valueCenter + valueIncrement;
     _tau4[iRun] = valueHigh; double sigma2High = updateLineScanFit(data);
-//    qDebug() << "lineScan1D high" << _tau4[iRun] << sigma2High << getSigma2();
     xParabola[2] = valueHigh;
     yParabola[2] = sigma2High;
 
     bool minimumIsBracketed = sigma2Center < sigma2Low && sigma2Center < sigma2High;
     bool noChangeInSigma2   = sigma2Center == sigma2Low || sigma2Center == sigma2High;
     bool goInLowDirection   = sigma2Center > sigma2Low;
-//    qDebug() << "lineScan1D bools" << minimumIsBracketed << noChangeInSigma2 << goInLowDirection;
     // bool goInHighDirection  = sigma2Center > sigma2High;
     double sigma2;  double delta = 0.;
     if ( minimumIsBracketed )
@@ -2682,13 +2689,11 @@ double PETRTM::lineScanTau4( int iRun, double &valueIncrement, dVector data )
             sigma2 = sigma2New;
             _tau4[iRun] += sign * valueIncrement;
             sigma2New = updateLineScanFit(data);
-//            qDebug() << "lineScan1D searching" << _tau4[iRun] << sigma2New;
             if ( sigma2New > sigma2 )
             { // The last step did not improve things, so set the delta value
                 _tau4[iRun] -= sign * valueIncrement;
                 valueIncrement /= 2.;
                 sigma2 = updateLineScanFit(data);
-//                qDebug() << "lineScan1D exit (reverse)" << sigma2;
                 return sigma2;
             }
             else if ( sigma2New/sigma2 - 1. < tolerance )
@@ -2696,7 +2701,6 @@ double PETRTM::lineScanTau4( int iRun, double &valueIncrement, dVector data )
                 sigma2 = sigma2New;
                 delta = _tau4[iRun] - valueCenter;
                 valueIncrement /= 2.;
-//                qDebug() << "lineScan1D exit (tolerance)" << sigma2;
                 return sigma2;
             }
             else
@@ -2725,7 +2729,6 @@ double PETRTM::lineScanTau4( int iRun, double &valueIncrement, dVector data )
             double xMax, yMax;
             if ( utilMath::ParabolicInterpolation(xParabola, yParabola, xMax, yMax) )
             {
-//                qDebug() << "ParabolicInterpolation" << xParabola << yParabola << xMax << yMax;
                 sigma2 = yMax;
                 delta = xMax - valueCenter;
             }
@@ -2735,7 +2738,6 @@ double PETRTM::lineScanTau4( int iRun, double &valueIncrement, dVector data )
     }
     _tau4[iRun] = valueCenter + delta;
     sigma2 = updateLineScanFit(data);
-//    qDebug() << "lineScan1D exit (bracketed)" << _tau4[iRun] << delta << valueIncrement << sigma2;
     return sigma2;
 }
 
@@ -2768,7 +2770,7 @@ void PETRTM::setIgnoredPoints(int iRun, bool resetWeights, QString ignoreString)
         setWeightsInRun(iRun);
 
     iVector includeVolume; includeVolume.fill(false,_weights[iRun].size());
-    int error = utilString::decodeSelectionList(ignoreString, includeVolume);
+    int error = utilString::decodeSelectionList(ignoreString, true, includeVolume);
     if ( error == 0 )
     {  // this section turns weight on/off but does not alter non-binary values
         for (int jt=0; jt<includeVolume.size(); jt++)
@@ -2794,13 +2796,12 @@ QString PETRTM::getIgnoredString(int iRun)
         else
             ignore[jTime] = 0;
     }
-    ignoreString = utilString::recodeSelectionList(ignore);
+    ignoreString = utilString::recodeSelectionList(ignore,true);
     return ignoreString;
 }
 
 void PETRTM::setWeightsInRun(int iRun)
 {
-//    qDebug() << "setWeightsInRun enter" << _PETWeightingModel << isFRTMFitk4();
     double trace=0.;
     int nTimeInRun = _dtBinsSec[iRun].size();
     if ( _weights[iRun].size() != nTimeInRun )
@@ -2809,10 +2810,7 @@ void PETRTM::setWeightsInRun(int iRun)
     for (int jt=0; jt<nTimeInRun; jt++)
     {
         if ( isFRTMFitk4() )  // isFRTMNew && _fitk4UsingFixedBPnd
-        {
             _weights[iRun][jt] = SQR(_frtmConv_dCtdtE[iRun][jt]);
-//            qDebug() << "use weight[" << jt << "] =" << _weights[iRun][jt];
-        }
         else if ( _PETWeightingModel == Weights_Uniform )
             _weights[iRun][jt] = 1.;
         else if ( _PETWeightingModel == Weights_noUptake )
@@ -2832,7 +2830,6 @@ void PETRTM::setWeightsInRun(int iRun)
         }
         trace += _weights[iRun][jt];
     }
-//    qDebug() << "trace =" << trace;
     if ( trace == 0. ) trace = 1.;
     // Normalize weights: average value should = 1; this must be true to make F statistic valid.
     // E.g., post-hoc determination of _sigma2 assumes accurate separability of _sigma2 and weights = 1/sigma2
@@ -2869,7 +2866,7 @@ bool PETRTM::isValidID(int iRun, int iType, QChar eventID)
 
 int PETRTM::countEvents()
 {
-//    qDebug() << "PETRTM::countEvents enter";
+//    FUNC_ENTER;
     // Count events
     _basisID.resize(0);
     _basisShape.resize(0);
@@ -2878,7 +2875,6 @@ int PETRTM::countEvents()
     // e.g., an ID cannot be a k2 and k2a event in different runs
     for ( int jRun=0; jRun<_nRuns; jRun++ )
     {
-//        qDebug() << "run" << jRun << "k2=" << _k2EventID[jRun] << "valid" << isValidID(jRun, Type_k2, _k2EventID[jRun]);
         // Count k2, k2a, and R1 events
         if ( ! _basisID.contains(_k2EventID[jRun]) && isValidID(jRun, Type_k2, _k2EventID[jRun]) )
         {
@@ -2909,7 +2905,6 @@ int PETRTM::countEvents()
         _k2EventCoefficient[jRun]  = getEventCoefficient(_k2EventID[jRun]);
         _k2aEventCoefficient[jRun] = getEventCoefficient(_k2aEventID[jRun]);
         _dCrdtEventCoefficient[jRun] = getEventCoefficient(_dCrdtEventID[jRun]);
-//        qDebug() << "PETRTM::countEvents _k2EventCoefficient" << _k2EventID[jRun] << _k2EventCoefficient[jRun];
     }
 
     for ( int jChallenge=0; jChallenge<_maxChallenges; jChallenge++ )
@@ -2922,13 +2917,16 @@ int PETRTM::countEvents()
         }
     }
     int nCoeff = _basisID.size();
-//    qDebug() << "PETRTM::countEvents exit" << nCoeff;
+    int nTimeTotal=0;
+    for (int jRun=0; jRun<_nRuns; jRun++)
+        nTimeTotal += _dtBinsSec[jRun].size();
+    init(nTimeTotal, nCoeff);
+//    FUNC_EXIT << nCoeff;
     return nCoeff;
 }
 
 void PETRTM::setRTMModelType(QString model)
 {
-//    qDebug() << "PETRTM::setRTMModelType enter";
     if ( model == "SRTM3" )
         _modelRTM = RTM_SRTM3;
     else if ( model == "SRTM2" )
@@ -2943,6 +2941,10 @@ void PETRTM::setRTMModelType(QString model)
         _modelRTM = RTM_rFRTM3New;
     else if ( model == "rFRTM2New" )
         _modelRTM = RTM_rFRTM2New;
+    else if ( model == "fmFRTM3" )
+        _modelRTM = RTM_fmFRTM3;
+    else if ( model == "fmFRTM2" )
+        _modelRTM = RTM_fmFRTM2;
     else
     {
         qWarning() << "Error: model not defined: " << model;
@@ -2959,14 +2961,11 @@ void PETRTM::setRTMModelType(RTMModelTypes model)
 
 void PETRTM::createAllBasisFunctions()
 {
+//    FUNC_ENTER;
     int nCoeff = countEvents();
-//    qInfo() << "*************** create PET-RTM basis functions **************" << nCoeff << _nRuns;
     if ( nCoeff == 0 ) return;
 
-    int nTimeTotal = 0;
-    for (int jRun=0; jRun<_nRuns; jRun++)
-        nTimeTotal += _dtBinsSec[jRun].size();
-    init(nTimeTotal, nCoeff);
+    int nTimeTotal = getNumberTimePoints();
 
     // FRTM convolution may be needed for basis functions or weights. Calculate them as needed
     if ( isFRTM() || _PETWeightingModel == Weights_noUptake )  calculateFRTMConvolution();
@@ -2999,6 +2998,7 @@ void PETRTM::createAllBasisFunctions()
     calculatePseudoInverse();
     defineConditions(getConditionString());
     setPrepared(true);
+//    FUNC_EXIT;
 }
 
 void PETRTM::createRunBasisFunction(QChar eventID, dVector &basis)
@@ -3165,7 +3165,6 @@ void PETRTM::calculateFRTMConvolution()
             dVector equilibrationVector = getEquilibrationVector(jRun);  // = k4 * (1+BPnd)
             if ( isFRTMNew() )
             {
-//                qDebug() << "calculateFRTMConvolution check off" << _fitk4UsingFixedBPnd;
                 _frtmConv_CtE[jRun] = convolveEquilibration(jRun, _tissRegionRaw[jRun],   equilibrationVector);
                 for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
                 {
@@ -3189,7 +3188,7 @@ void PETRTM::calculateFRTMConvolution()
     } // jRun
 
     _frtmConv_dCtdtE = _frtmConv_dCtdtERaw;
-    if ( _smoothingScaleMin != 0. )
+    if ( _smoothingScale != 0. )
         // Potentially smooth the convolution to reduce noise
         fitLoessCurve(_frtmConv_dCtdtE);  // additional smoothing xxx
 }
@@ -3199,7 +3198,6 @@ dVector PETRTM::convolveEquilibration(int iRun, dVector tissue, dVector equilibr
 //    dVector equilibrationFine = equilibration;
     dVector tissueFine = interpolateTissueVector(iRun, tissue);
     dVector equilibrationFine = interpolateTissueVector(iRun,equilibration);
-//    qDebug() << "fine sizes" << tissueFine.size() << equilibrationFine.size();
 
     int nTimeFine = tissueFine.size();
     double dt = static_cast<double>(_minBin[iRun])/60./static_cast<double>(_interpolationFactor);
@@ -3215,15 +3213,12 @@ dVector PETRTM::convolveEquilibration(int iRun, dVector tissue, dVector equilibr
             // so compute a correction factor to equilibrationFine that the exponential integral matches the continuous integral.
             double correctionFactor = qExp(-equilibrationFine[jtPrime]*dt/2.) / equilibrationFine[jtPrime] / dt;
             correctionFactor *= qExp(equilibrationFine[jtPrime] * dt) - 1.;
-//            qDebug() << "exponential[" << jt << "][" << jtPrime << "] =" << exponential[jtPrime] << correctionFactor;
             exponential[jtPrime] *= correctionFactor;
             convolution[jt] += tissueFine[jtPrime] * exponential[jtPrime] * dt;
         }
     } // jt
     dVector convolutionLowRes = combineFineTissueVector(iRun,convolution);
 //    dVector convolutionLowRes = convolution;
-//    qDebug() << "convolutionHighRes" << convolution;
-//    qDebug() << "convolutionLowRes" << convolutionLowRes;
     return convolutionLowRes;
 }
 
@@ -3241,14 +3236,9 @@ void PETRTM::calculateBPndOrK4ForIteration()
     }
 }
 
-void PETRTM::setSmoothingScaleMin(double smoothingScale)
+void PETRTM::setSmoothingScale(double smoothingScale)
 {
-    _smoothingScaleMin = smoothingScale;
-    if ( _smoothingScaleMin != 0. )
-    {
-        for ( int jRun=0; jRun<_nRuns; jRun++ )
-            _quadLOESS[jRun].define(_timeInRun[jRun],_smoothingScaleMin);
-    }
+    _smoothingScale = smoothingScale;
     updateReferenceRegion();
 }
 
@@ -3256,7 +3246,7 @@ void PETRTM::fitLoessCurve(dMatrix &runData)
 {
     for (int jRun=0; jRun<_nRuns; jRun++)
     {
-        dVector fit = _quadLOESS[jRun].fit(runData[jRun]);
+        _quadLOESS[jRun].defineAndFit(_timeInRun[jRun],runData[jRun],_smoothingScale,true,true);
         for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
             runData[jRun][jt] = _quadLOESS[jRun].getFitAtCentralPoint(jt);
     }

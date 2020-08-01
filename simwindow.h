@@ -7,7 +7,7 @@
 #include "simengine.h"
 #include "petrtm.h"
 
-class Fitter
+class Fitter     // UNUSED!
 {
 private:
     dVector _RRTimeVector;
