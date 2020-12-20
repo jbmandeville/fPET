@@ -14,6 +14,7 @@ using namespace utilIO;
 
 int PETRTM::readTimeModel(QString fileName)
 {
+    FUNC_ENTER;
     // Read the time model file
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -37,20 +38,19 @@ int PETRTM::readTimeModel(QString fileName)
             if ( !modelName.compare("FRTM",Qt::CaseInsensitive)  || !modelName.compare("FRTM3",Qt::CaseInsensitive) ||
                  !modelName.compare("rFRTM",Qt::CaseInsensitive) || !modelName.compare("rFRTM3",Qt::CaseInsensitive) ||
                  !modelName.compare("FRTM2",Qt::CaseInsensitive) || !modelName.compare("rFRTM2",Qt::CaseInsensitive) )
-            {
                 _modelRTM = RTM_rFRTM3;
-            }
             else if ( !modelName.compare("SRTM",Qt::CaseInsensitive) || !modelName.compare("SRTM3",Qt::CaseInsensitive) ||
                       !modelName.compare("SRTM2",Qt::CaseInsensitive) )
-            {
                 _modelRTM = RTM_SRTM3;
-            }
+            else if ( !modelName.compare("fmFRTM",Qt::CaseInsensitive) || !modelName.compare("fmFRTM3",Qt::CaseInsensitive) ||
+                      !modelName.compare("fmFRTM2",Qt::CaseInsensitive) )
+                _modelRTM = RTM_fmFRTM3;
             else
             {
                 qInfo() << "Error reading the model name" << modelName;
                 return(1);
             }
-            if ( isFRTM() )
+            if ( isFRTM() || isForwardModel() )
             { // need to read 1/k4
                 if ( stringList.size() > 2 )
                 {
@@ -60,9 +60,12 @@ int PETRTM::readTimeModel(QString fileName)
                     value = tau4.toDouble(&ok);
                     if ( ok )
                     {
-                        _tau4Default = value;
+                        _tau4Nominal = value;
                         for ( int jRun=0; jRun<_nRuns; jRun++ )
-                            if ( _tau4[jRun] == 0. ) _tau4[jRun] = _tau4Default;
+                        {
+                            if ( _tau4[jRun] == 0. ) _tau4[jRun] = _tau4Nominal;
+                            _simulator[jRun].setTau4(_tau4[jRun]);
+                        }
                     }
                 }
             }
@@ -163,13 +166,17 @@ int PETRTM::readTimeModel(QString fileName)
     {
         for (int jRun=0; jRun<_nRuns; jRun++)
         {
-            RTM2 &= _tau2RefFRTMFixed[jRun] != 0.;
-            RTM3 &= _tau2RefFRTMFixed[jRun] == 0.;
+            double tau2Ref = _tau2RefFRTMFixed[jRun];
+            if ( isForwardModel() ) tau2Ref = _simulator[jRun].getTau2RefRTM2();
+            RTM2 &= tau2Ref != 0.;
+            RTM3 &= tau2Ref == 0.;
         }
     }
     if ( RTM2 && !RTM3 )
     {
-        if ( isSRTM() )
+        if ( isForwardModel() )
+            _modelRTM = RTM_fmFRTM2;
+        else if ( isSRTM() )
         {
             if ( _modelRTM != RTM_SRTM2Fit )
                 _modelRTM = RTM_SRTM2;
@@ -179,7 +186,9 @@ int PETRTM::readTimeModel(QString fileName)
     }
     else if ( RTM3 && !RTM2 )
     { // variable _tau2Ref
-        if ( isSRTM() )
+        if ( isForwardModel() )
+            _modelRTM = RTM_fmFRTM3;
+        else if ( isSRTM() )
             _modelRTM = RTM_SRTM3;
         else
             _modelRTM = RTM_rFRTM3;
@@ -197,6 +206,7 @@ int PETRTM::readTimeModel(QString fileName)
 //    prepare();  // this is needed to avoid killing conditions due to undefined basis functions
     _petConditionsFromTimeModelFile = allConditions;
 //    updateConditions(allConditions);
+    FUNC_EXIT << _modelRTM << RTM2 << RTM3 << isRTM2() << isRTM3();
 
     return(0);
 }
@@ -520,7 +530,12 @@ int PETRTM::readGLMFileNewFormat(int iRun, QString fileName)
             {  // Set a fixed value of tau2_ref
                 QString tau2Ref = valueList.at(1);
                 bool ok;
-                if ( isSRTM() )
+                if ( isForwardModel() )
+                {
+                    _simulator[iRun].setTau2RefRTM2(tau2Ref.toDouble(&ok));
+                    _simulator[0].setRTM3(false);
+                }
+                else if ( isSRTM() )
                 {
                     if ( nValues == 6 )
                     {
@@ -556,7 +571,7 @@ int PETRTM::readGLMFileNewFormat(int iRun, QString fileName)
                     utilString::errorMessage(errorText);
                 }
                 else
-                    _tau4[iRun] = _tau4Default = tau4;
+                    _tau4[iRun] = _tau4Nominal = tau4;
             }
             else if ( ! eventType.compare("R1",Qt::CaseInsensitive) )
             {
@@ -706,6 +721,99 @@ int PETRTM::readGLMFileNewFormat(int iRun, QString fileName)
     return(0);
 }
 
+void PETRTM::calculateTau4andTau2Ref(int iRun, dVector &AICVector, dVector &tau4Vector, dVector &tau2RefVector,
+                                     double &bestTau4, double &bestTau2Ref)
+{ // pass current value of tau4 in bestTau4
+    tau4Vector.clear();  AICVector.clear();  tau2RefVector.clear();
+    for (double tau4=0.; tau4<2.*bestTau4; tau4+=0.5)
+    {
+        setTau4Nominal(tau4);
+        prepare();
+        fitByForwardModel();
+        double AIC = getSimulationAIC(iRun);
+        FUNC_INFO << "tau4, AIC" << tau4 << AIC;
+        double tau2Ref = getTau2RefInRun(iRun);
+        tau4Vector.append(tau4);
+        AICVector.append(AIC);
+        tau2RefVector.append(tau2Ref);
+        FUNC_INFO << "AIC[" << tau4 << "] =" << AIC << "tau2Ref =" << getTau2RefInRun(iRun);
+    }
+    setTau4Nominal(bestTau4);
+
+    double AICMin=1.e30;
+    for (int jTau4=0; jTau4<tau4Vector.size(); jTau4++)
+    {
+        if ( AICVector[jTau4] < AICMin )
+        {
+            AICMin      = AICVector[jTau4];
+            bestTau4    = tau4Vector[jTau4];
+            bestTau2Ref = tau2RefVector[jTau4];
+        }
+    }
+    FUNC_INFO << "** MIN: bestTau4, bestTau2Ref = **" << bestTau4 << bestTau2Ref;
+
+    // compute best k4
+    bestTau4 = bestTau2Ref = 0.;  double probSum = 0.;
+    for (int jTau4=0; jTau4<tau4Vector.size(); jTau4++)
+    {
+        double prob = qExp((AICMin-AICVector[jTau4]));
+        bestTau4    += prob * tau4Vector[jTau4];
+        bestTau2Ref += prob * tau2RefVector[jTau4];
+        probSum     += prob;
+    }
+    bestTau4    /= probSum;
+    bestTau2Ref /= probSum;
+
+    setTau4(0,bestTau4);
+    _simulator[0].setTau2RefRTM2(bestTau2Ref);
+
+    FUNC_INFO << "** CALC: bestTau4, bestTau2Ref = **" << bestTau4 << bestTau2Ref;
+}
+void PETRTM::calculateTau4atFixedTau2Ref(int iRun, double &bestTau4)
+{
+    dVector AICVector, tau4Vector;
+    calculateTau4atFixedTau2Ref(iRun, AICVector, tau4Vector, bestTau4);
+}
+
+void PETRTM::calculateTau4atFixedTau2Ref(int iRun, dVector &AICVector, dVector &tau4Vector, double &bestTau4)
+{ // pass current value of tau4 in bestTau4
+    tau4Vector.clear();  AICVector.clear();
+    for (double tau4=0.; tau4<2.*bestTau4; tau4+=0.5)
+    {
+        setTau4Nominal(tau4);
+        prepare();
+        fitByForwardModel();
+        double AIC = getSimulationAIC(iRun);
+        tau4Vector.append(tau4);
+        AICVector.append(AIC);
+        FUNC_INFO << "AIC[" << tau4 << "] =" << AIC << "tau2Ref =" << getTau2RefInRun(iRun);
+    }
+    setTau4Nominal(bestTau4);
+
+    double AICMin=1.e30;
+    for (int jTau4=0; jTau4<tau4Vector.size(); jTau4++)
+    {
+        if ( AICVector[jTau4] < AICMin )
+        {
+            AICMin      = AICVector[jTau4];
+            bestTau4    = tau4Vector[jTau4];
+        }
+    }
+
+    // compute best k4
+    bestTau4 = 0.;  double probSum = 0.;
+    for (int jTau4=0; jTau4<tau4Vector.size(); jTau4++)
+    {
+        double prob = qExp((AICMin-AICVector[jTau4]));
+        bestTau4    += prob * tau4Vector[jTau4];
+        probSum     += prob;
+    }
+    bestTau4    /= probSum;
+    setTau4(0,bestTau4);
+
+    FUNC_INFO << "** bestTau4, currentTau2Ref = **" << bestTau4 << getTau2RefInRun(iRun);
+}
+
 dVector PETRTM::getEquilibrationVector(int iFile)
 {   // Create the vector: k4 * (1 + BPnd) using saved values of k4 and BPnd
     //    1) Fit for BPnd using fixed k4, with BPnd saved from last iteration as _BPndForIterations
@@ -720,7 +828,8 @@ dVector PETRTM::getEquilibrationVector(int iFile)
 dPoint2D PETRTM::getBPndVersusTime(int iFile, int iTime)  // VERY INEFFICIENT METHOD: EVERY POINT ITIME CALLS createChallengeShape
 { // get value and error (into x and y)
     // Baseline k2 and k2a define baseline BPnd
-    dPoint2D BP;        BP.x = BP.y = 0.;
+    dPoint2D BP = {0., 0.};
+
     // Baseline k2 and k2a
     int iCoeffk2  = _k2EventCoefficient[iFile];
     int iCoeffk2a = _k2aEventCoefficient[iFile];
@@ -753,13 +862,15 @@ dPoint2D PETRTM::getBPndVersusTime(int iFile, int iTime)  // VERY INEFFICIENT ME
             BP.x= k2 / k2a - 1;
         BP.y = BP.x * qSqrt( k2Err2/k2/k2 + k2aErr2/k2a/k2a);
     }
+    if ( isForwardModel() )
+        BP.x = _simulator[iFile].getBPndCoarse(iTime);
     return BP;
 }
 
 dPoint2D PETRTM::getBPndInCurrentCondition()
 {
-//    FUNC_ENTER;
-    dPoint2D BP;  BP.x = BP.y = 0.;
+    FUNC_ENTER << isForwardModel();
+    dPoint2D BP = {0., 0.};
 
     updateConditions(getConditionString());
 
@@ -829,6 +940,22 @@ dPoint2D PETRTM::getBPndInCurrentCondition()
         }
     }
     BP.y = qSqrt(BP.y);
+    if ( isForwardModel() )
+    {
+        double error=0.;
+        FUNC_INFO << (getCurrentConditionShape() == Type_k2a) << (getCurrentConditionShape() == Type_challenge);
+        if  ( getCurrentConditionShape() == Type_k2a )
+        {
+            BP.x = _simulator[0].getBP0();
+            error = _simulator[0].getBP0Err();
+        }
+        else
+        {
+            BP.x = _simulator[0].getChallengeMag();
+            error = _simulator[0].getChallengeErr();
+        }
+        if ( error != 0. ) BP.y = error;
+    }
 //    FUNC_EXIT << BP.x << BP.y;
     return BP;
 }
@@ -871,7 +998,8 @@ double PETRTM::getBP0InRun(int iRun)
 { // make this more efficient
     if ( isForwardModel() )
         return _simulator[iRun].getBP0();
-    else if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 )
+
+    if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 )
         return 0.;
 
     double BPnd = 0.;
@@ -898,9 +1026,11 @@ double PETRTM::getBP0InRun(int iRun)
 
 double PETRTM::getTau4InRun(int iRun)
 { // "k2a" = k2 * k4 * BPnd, so 1/k4 = k2/k2a * BPnd
+    FUNC_ENTER << isForwardModel();
     if ( isForwardModel() )
         return _simulator[iRun].getTau4();
-    else if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 )
+
+    if ( _k2EventCoefficient[iRun] < 0 || _k2aEventCoefficient[iRun] < 0 )
         return 0.;
 
     double tau4;
@@ -914,7 +1044,7 @@ double PETRTM::getTau4InRun(int iRun)
             tau4 = k2 / k2a;
 //        FUNC_INFO << "PETRTM::getTau4InRun ongoing" << tau4;
     }
-    else if (_fitk4UsingFixedBPnd ) // k4 fitting has been completed, so return saved value
+    else if (_fitk4 ) // k4 fitting has been completed, so return saved value
     {
         tau4 = _tau4[iRun];
 //        FUNC_INFO << "PETRTM::getTau4InRun completed" << tau4;
@@ -930,7 +1060,8 @@ double PETRTM::getTau4InRun(int iRun)
 
 dPoint2D PETRTM::getTau2InCurrentCondition()
 { // tau2 = 1 / k2
-    dPoint2D tau2;  tau2.x = tau2.y = 0.; // save value and error in x,y
+    dPoint2D tau2 = {0., 0.};
+
     if ( currentconditionIsk2Type() )
     {
         int iCoeffk2 = getOnlyCoefficientInCondition(getCurrentCondition());
@@ -950,7 +1081,8 @@ dPoint2D PETRTM::getTau2InCurrentCondition()
 
 dPoint2D PETRTM::getTau2RefInCurrentCondition()
 { // tau2_ref = R1 / k2
-    dPoint2D tau2Ref;  tau2Ref.x = tau2Ref.y = 0.; // save value and error in x,y
+    dPoint2D tau2Ref = {0., 0.};
+
     int iCondition = getCurrentCondition();
     if ( currentconditionIsR1Type() )
     {
@@ -984,6 +1116,15 @@ dPoint2D PETRTM::getTau2RefInCurrentCondition()
             */
         }
     }
+    if ( isForwardModel() )
+    {
+        if ( isRTM3() )
+            tau2Ref.x = _simulator[0].getTau2RefRTM3();
+        else
+            tau2Ref.x = _simulator[0].getTau2RefRTM2();
+        double error = _simulator[0].getTau2RefErr();
+        if ( error != 0. ) tau2Ref.y = error;
+    }
     return tau2Ref;
 }
 
@@ -991,7 +1132,9 @@ void PETRTM::setTau2Ref(int iRun, double tau2Ref)
 {
     if ( isRTM2() )
     {   // set tau2Ref for the specified run
-        if ( isSRTM() )
+        if ( isForwardModel() )
+            _simulator[iRun].setTau2RefRTM2(tau2Ref);
+        else if ( isSRTM() )
             _tau2RefSRTMFixed[iRun] = tau2Ref;
         else
             _tau2RefFRTMFixed[iRun] = tau2Ref;
@@ -1005,7 +1148,9 @@ void PETRTM::setTau2Ref(int iRun, double tau2Ref)
         {
             if ( getR1EventID(jRun) == R1 && getk2EventID(jRun) == k2 )
             {
-                if ( isSRTM() )
+                if ( isForwardModel() )
+                    _simulator[iRun].setTau2RefRTM2(tau2Ref);
+                else if ( isSRTM() )
                     _tau2RefSRTMFixed[jRun] = tau2Ref;
                 else
                     _tau2RefFRTMFixed[jRun] = tau2Ref;
@@ -1015,11 +1160,34 @@ void PETRTM::setTau2Ref(int iRun, double tau2Ref)
     setPrepared(false);
 };
 
+void PETRTM::setTau2RefSRTM(int iRun, double tau2Ref)
+{
+    if ( isForwardModel() )
+        _simulator[iRun].setTau2RefRTM2(tau2Ref);
+    else
+        _tau2RefSRTMFixed[iRun] = tau2Ref;
+    setPrepared(false);
+}
+void PETRTM::setTau2RefFRTM(int iRun, double tau2Ref)
+{
+    FUNC_INFO << isForwardModel() << isRTM3() << tau2Ref;
+    if ( isForwardModel() )
+        _simulator[iRun].setTau2RefRTM2(tau2Ref);
+    else
+        _tau2RefFRTMFixed[iRun] = tau2Ref;
+    setPrepared(false);
+}
 
 double PETRTM::getTau2RefInRun(int iRun)
 { // tau2_ref = R1 / k2
+    FUNC_ENTER << isForwardModel() << isRTM3();
     if ( isForwardModel() )
-        return _simulator[iRun].getTau2Ref();
+    {
+        if ( isRTM3() )
+            return _simulator[iRun].getTau2RefRTM3();
+        else
+            return _simulator[iRun].getTau2RefRTM2();
+    }
 
     double tau2Ref=0.;
     if ( isRTM3() )
@@ -1043,14 +1211,8 @@ double PETRTM::getTau2RefInRun(int iRun)
 
 dPoint2D PETRTM::getk2RefInRun(int iRun)
 { // k2_ref = k2 / R1
-    if ( isForwardModel() )
-    {
-        dPoint2D tau2Ref = {0.,0.};
-        tau2Ref.x = _simulator[iRun].getTau2Ref();
-        return tau2Ref;
-    }
-
-    dPoint2D k2Ref;  k2Ref.x = k2Ref.y = 0.; // save value and error in x,y
+    FUNC_ENTER << isForwardModel() << isRTM3();
+    dPoint2D k2Ref = {0.,0.};
     if ( isRTM3() )
     {
         if ( _R1EventCoefficient[iRun] < 0 || _k2EventCoefficient[iRun] < 0 ) return k2Ref;
@@ -1072,18 +1234,20 @@ dPoint2D PETRTM::getk2RefInRun(int iRun)
             k2Ref.x = 1./_tau2RefFRTMFixed[iRun];
         k2Ref.y = 0.;
     }
+
+    if ( isForwardModel() )
+    {
+        if ( isRTM3() )
+            k2Ref.x = _simulator[iRun].getk2RefRTM3();
+        else
+            k2Ref.x = _simulator[iRun].getk2RefRTM2();
+        FUNC_INFO << "isForwardModel" << isForwardModel() << k2Ref.x << 1/k2Ref.x;
+    }
     return k2Ref;
 }
 
 dPoint2D PETRTM::getR1InRun(int iRun)
 {
-    if ( isForwardModel() )
-    {
-        dPoint2D R1 = {0.,0.};
-        R1.x = _simulator[iRun].getR1();
-        return R1;
-    }
-
     dPoint2D R1;  R1.x = R1.y = 0.; // save value and error in x,y
     if ( isRTM3() )
     {
@@ -1098,34 +1262,37 @@ dPoint2D PETRTM::getR1InRun(int iRun)
         dPoint2D R1;  R1.x = k2.x / k2Ref.x;  R1.y = R1.x * qSqrt( SQR(k2.y/k2.x) + SQR(k2Ref.y/k2Ref.x) );
         return R1;
     }
+    if ( isForwardModel() )
+    {
+        dPoint2D R1 = {0.,0.};
+        R1.x = _simulator[iRun].getR1();
+    }
     return R1;
 }
 
 dPoint2D PETRTM::getk2InRun(int iRun)
 {
+    dPoint2D k2;  k2.x = k2.y = 0.; // save value and error in x,y
+    k2.x = getBeta(_k2EventCoefficient[iRun]);
+    k2.y = getSEM(_k2EventCoefficient[iRun]);
     if ( isForwardModel() )
     {
         dPoint2D k2 = {0.,0.};
         k2.x = _simulator[iRun].getk2();
-        return k2;
     }
-    dPoint2D k2;  k2.x = k2.y = 0.; // save value and error in x,y
-    k2.x = getBeta(_k2EventCoefficient[iRun]);
-    k2.y = getSEM(_k2EventCoefficient[iRun]);
     return k2;
 }
 
 dPoint2D PETRTM::getk2aInRun(int iRun)
 {
+    dPoint2D k2a;  k2a.x = k2a.y = 0.; // save value and error in x,y
+    k2a.x = getBeta(_k2aEventCoefficient[iRun]);
+    k2a.y = getSEM(_k2aEventCoefficient[iRun]);
     if ( isForwardModel() )
     {
         dPoint2D k2a = {0.,0.};
         k2a.x = _simulator[iRun].getk2a();
-        return k2a;
     }
-    dPoint2D k2a;  k2a.x = k2a.y = 0.; // save value and error in x,y
-    k2a.x = getBeta(_k2aEventCoefficient[iRun]);
-    k2a.y = getSEM(_k2aEventCoefficient[iRun]);
     return k2a;
 }
 
@@ -1143,7 +1310,8 @@ dPoint2D PETRTM::getdk2aInRun(QChar challengeID)
 
 dPoint2D PETRTM::getk2RefInCurrentCondition()
 { // tau2_ref = R1 / k2
-    dPoint2D k2Ref;  k2Ref.x = k2Ref.y = 0.; // save value and error in x,y
+    dPoint2D k2Ref = {0., 0.};
+
     int iCondition = getCurrentCondition();
     if ( currentconditionIsR1Type() )
     {
@@ -1178,6 +1346,13 @@ dPoint2D PETRTM::getk2RefInCurrentCondition()
 */
         }
     }
+    if ( isForwardModel() )
+    {
+        if ( isRTM3() )
+            k2Ref.x = _simulator[0].getk2RefRTM3();
+        else
+            k2Ref.x = _simulator[0].getk2RefRTM2();
+    }
     return k2Ref;
 }
 
@@ -1204,12 +1379,13 @@ void PETRTM::setTissueVector(dMatrix tissueRegion)
     _tissRegionRaw = tissueRegion;
     _tissRegion    = tissueRegion;
 
-    if ( _smoothingScale != 0. )
+    if ( _smoothingScale != 0. && !isForwardModel() )
         fitLoessCurve(_tissRegion);  // xxx
     _tissRegionDeriv = _tissRegion;  // this ensure dimensions are correct
-    if ( (isFRTM() && _tau4Default != 0.) || _PETWeightingModel == Weights_noUptake )
+    if ( (isFRTM() && _tau4Nominal != 0.) || _PETWeightingModel == Weights_noUptake )
         differentiateByRun(_tissRegionDeriv); // rFRTM requires a tissue derivative for the convolution term'
-    else if ( isForwardModel() )
+
+    if ( isForwardModel() )
     {
         for (int jRun=0; jRun<_nRuns; jRun++)
             _simulator[jRun].setCtData(tissueRegion[jRun]);
@@ -1527,7 +1703,7 @@ QString PETRTM::createConditions()
 
 void PETRTM::updateConditions(QString conditionString)
 {
-    int nCoeff = countEvents();  // updates coefficient arrays
+//    int nCoeff = countEvents();  // updates coefficient arrays
 //    FUNC_ENTER << nCoeff;
     definePETConditions(conditionString);
 //    FUNC_EXIT;
@@ -1768,6 +1944,15 @@ void PETRTM::setR1EventID(int iRun, QChar ID)
     setBasisFunctionsChanged();
 };
 
+void PETRTM::setInclusionOfdCrdt(bool state)
+{
+    _dCrdtIncluded = state;
+    setPrepared(false);
+    setBasisFunctionsChanged();
+    for (int jRun=0; jRun<_nRuns; jRun++)
+        _simulator[jRun].setIncludePlasma(state);
+}
+
 void PETRTM::setdCrdtEventID(int iRun, QChar ID)
 {
     if ( iRun < 0 ) return;
@@ -1785,7 +1970,7 @@ void PETRTM::setNumberRuns(int nFiles)
     { // the following block needs only 1 allocation
         _R1EventID.fill('1',_nRuns);
         _k2EventID.fill('a',_nRuns);
-        _k2aEventID.fill('A',_nRuns);
+        _k2aEventID.fill('B',_nRuns);
         _dCrdtEventID.fill('v',_nRuns);
         _R1EventCoefficient.resize(_nRuns);
         _k2EventCoefficient.resize(_nRuns);
@@ -1884,9 +2069,9 @@ int PETRTM::writeReferenceRegion(int iRun, QString fileName, QString RRName)
     out << "delta_time " << RRName << "\n";
     for (int jt=0; jt<nTimeInRun; jt++)
     {
-        out << _dtBinsSec[iRun][jt] << " " << _refRegion[iRun][jt] << "\n";
+        out << _dtBinsSec[iRun][jt] << " " << _refRegionRaw[iRun][jt] << "\n";
         _table[iRun][jt].append(_dtBinsSec[iRun][jt]);
-        _table[iRun][jt].append(_refRegion[iRun][jt]);
+        _table[iRun][jt].append(_refRegionRaw[iRun][jt]);
     }
     file.close();
 
@@ -1974,7 +2159,16 @@ void PETRTM::saveTimeModelFiles(QString dirName, QStringList dataFileList)
 
     // time-model
     bool allSameTau4=true;
-    if ( isFRTM() )
+    if ( isForwardModel() )
+    {
+        for (int jRun=0; jRun<_nRuns; jRun++)
+            allSameTau4 &= (_tau4[jRun] == _tau4[0]);
+        if ( allSameTau4 )
+            out << "time-model fmFRTM " << _tau4[0] << "\n";
+        else
+            out << "time-model fmFRTM\n";
+    }
+    else if ( isFRTM() )
     {
         for (int jRun=0; jRun<_nRuns; jRun++)
             allSameTau4 &= (_tau4[jRun] == _tau4[0]);
@@ -2040,9 +2234,12 @@ void PETRTM::writeGLMFile(int iRun, QString fileName, bool allSameTau4)
     if ( ! allSameTau4 )
         out << "1/k4 " << _tau4[iRun] << "\n\n";
     // tau2Ref
-    if ( isRTM2() )
+    FUNC_INFO << isRTM2() << isForwardModel() << isFRTM() << isSRTMReg();
+     if ( isRTM2() )
     {
-        if ( isFRTM() )
+        if ( isForwardModel() )
+            out << "1/k2' " << _simulator[iRun].getTau2RefRTM2() << "\n\n";
+        else if ( isFRTM() )
             out << "1/k2' " << _tau2RefFRTMFixed[iRun] << "\n\n";
         else if ( isSRTMReg() )
             out << "1/k2' " << _tau2RefSRTMFixed[iRun] << " " << _tau2RefSRTMCalOffset << " "
@@ -2227,8 +2424,6 @@ void PETRTM::setChallengeRun(int indexChallenge, int indexStimulus, int iRun)
 void PETRTM::setChallengeOnset(int indexChallenge, int indexStimulus, double time)
 {
     _challengeOn[indexChallenge][indexStimulus] = time;
-    int iRun = getChallengeRun(indexChallenge,indexStimulus);
-    _simulator[iRun].setChallengeTime(time);
     setPrepared(false);
 }
 void PETRTM::setChallengeOffset(int indexChallenge, int indexStimulus, double time)
@@ -2290,12 +2485,13 @@ void PETRTM::setTimePointsInRun(int iRun, int nTime)
 
 void PETRTM::prepare()
 {
-//    FUNC_ENTER;
+    FUNC_ENTER;
     // Perhaps do error checking here first?
 //    updateReferenceRegion();
 
     // For iterative models, add the 1st fit to the "prepare" step
     bool multiPass = isFRTM() || isSRTMReg() || (_PETWeightingModel == Weights_noUptake) || isForwardModel();
+    FUNC_INFO << "multipass" << multiPass;
     if ( multiPass )
     {
         if ( _PETWeightingModel == Weights_noUptake )
@@ -2328,13 +2524,20 @@ void PETRTM::prepare()
         }
         else if ( isForwardModel() )
         {
+            FUNC_INFO << "forward model";
             RTMModelTypes saveModel = _modelRTM;
-            if ( _modelRTM == RTM_fmFRTM3 )
+            if ( isRTM3() )
                 setRTMModelType(RTM_SRTM3);
             else
                 setRTMModelType(RTM_SRTM2);
             createAllBasisFunctions();
             fitData(_tissRegion);
+            for (int jRun=0; jRun<_nRuns; jRun++)
+            {
+                _simulator[jRun].setBP0(getBP0InRun(jRun));
+                _simulator[jRun].setR1(getR1InRun(jRun).x);
+                if ( isRTM3() ) _simulator[jRun].setk2RefRTM3(getk2RefInRun(jRun).x);  // don't set for fixed k2'
+            }
             setRTMModelType(saveModel); // now forward model has SRTM information
         }
     }
@@ -2345,24 +2548,30 @@ void PETRTM::prepare()
 
 void PETRTM::fitByForwardModel(dMatrix &yFit)
 {
+    FUNC_ENTER << _BPndForIterations[0];
     if ( !isForwardModel() ) return;
+
+    int nBootStrap=0;
+//    int nBootStrap=400;
 
     for (int jRun=0; jRun<_nRuns; jRun++)
     {
-        double BP0 = _BPndForIterations[jRun];
-        if ( isRTM3() )
-            _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, true);
-        else
-            _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, false);
+        double BP0 = qMax(0.,_BPndForIterations[jRun]);
+        bool includeChallenge = getNumberChallengesInRun(jRun) == 1;
+        _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, 0., _tau4Nominal,
+                             _fitk4, isRTM3(), includeChallenge, nBootStrap);
+        FUNC_INFO << "assign yFit";
         yFit[jRun] = _simulator[jRun].getCtFit();
+        FUNC_INFO << "assigned yFit";
     }
-
+    FUNC_EXIT;
 }
 
 void PETRTM::fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
 {
+    FUNC_ENTER;
     // iterative methods
-    bool fitByIteration = (isFRTM() && _tau4Default != 0.);
+    bool fitByIteration = (isFRTM() && _tau4Nominal != 0.);
     if ( isForwardModel() )
         fitByForwardModel(yFit);
     else if (  fitByIteration )
@@ -2371,9 +2580,8 @@ void PETRTM::fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
         fitDataByGLM(timeSeriesVector, yFit); // 1-step
 
     // potentially fit k4 as 2nd stage
-    if ( _fitk4UsingFixedBPnd )  // k4 fitting has been selected, but the current 1st-stage model could be anything
+    if ( _fitk4 && !isForwardModel() )  // k4 fitting has been selected, but the current 1st-stage model could be anything
     {
-
         RTMModelTypes saveTimeModel = _modelRTM;
         // Change models, prepare new basis functions (with newTAC=true), and fit the model as a starting point
         if ( isRTM3() )
@@ -2390,7 +2598,7 @@ void PETRTM::fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
         if (  fitByIteration )
             fitDataByGLMIterationForConsistency(timeSeriesVector, yFit);
     }
-
+    FUNC_EXIT;
 }
 
 void PETRTM::fitData(dMatrix timeSeriesVector)
@@ -2412,6 +2620,7 @@ void PETRTM::fitData(dMatrix timeSeriesVector, dMatrix &yFit)
     }
     fitData(ROIVector, yFit);
 }
+
 dVector PETRTM::makeVectorFromROIData(QVector<ROI_data> timeSeriesVector)
 {
     int nTimeTotal = getNumberTimePoints();
@@ -2452,6 +2661,7 @@ void PETRTM::fitDataByGLM(QVector<ROI_data> timeSeriesVector)
 }
 void PETRTM::fitDataByGLM(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
 { // timeSeriesVector follows the ROI_data structure, with 1d vectors for x and y
+    FUNC_ENTER;
     // Copy the ROI input data into a simple vector
     dVector data = makeVectorFromROIData(timeSeriesVector);
     fitWLSForIteration(data);
@@ -2493,6 +2703,7 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
     // The stopping criteria is consistency: the value of the iterative parameter does not change.
     // Assume that the TAC has already been fit by an initial model at this point
     // Copy the ROI input data into a simple vector
+    FUNC_ENTER;
     fitDataByGLM(timeSeriesVector, yFit);
 
     // Make sure all BP0 values are positive
@@ -2501,7 +2712,7 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
         moreIterations &= getBP0InRun(jRun) > 0.;
     bool goodIteration = moreIterations;
 
-    _nIterations=0;
+    _nIterations=1;
     int maxIterations = 20;
 
     // the model should have been fit using fitDataByGLM prior to this function
@@ -2516,7 +2727,9 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
     for (int jCoeff=0; jCoeff<getNumberCoefficients(); jCoeff++)
         qDebug() << "coefficient" << jCoeff << "=" << getBeta(jCoeff);
 */
-    moreIterations = false;  // turn off loop: just fit 1ce with new model
+    FUNC_INFO << "BP0 start" << getBP0InRun(0);
+
+    moreIterations = false;  // turn off loop: just fit 1ce with new model; 1st fit in prepare();
     while (goodIteration && moreIterations)
     {
         createAllBasisFunctions();
@@ -2574,14 +2787,15 @@ void PETRTM::fitDataByGLMPlusLineScan(QVector<ROI_data> timeSeriesVector, dMatri
     // E.g., use this with rFRTM and a fixed value of k4 (or BPnd) plus a line scan on BPnd (or k4)
     // Assume that the TAC has already been fit by an initial model at this point
     // Copy the ROI input data into a simple vector
+    FUNC_ENTER;
     dVector data = makeVectorFromROIData(timeSeriesVector);
 
-    if ( _fitk4UsingFixedBPnd )
+    if ( _fitk4 )
     { // fix BPnd and vary 1/k4
         for ( int jRun=0; jRun<_nRuns; jRun++ )
         {
-            _tau4[jRun]      = _tau4Default;
-            double increment = _tau4Default / 4.;
+            _tau4[jRun]      = _tau4Nominal;
+            double increment = _tau4Nominal / 4.;
             double minimumIncrement = 0.1;
             double sigma2;
             while ( increment > minimumIncrement )
@@ -2809,7 +3023,7 @@ void PETRTM::setWeightsInRun(int iRun)
 
     for (int jt=0; jt<nTimeInRun; jt++)
     {
-        if ( isFRTMFitk4() )  // isFRTMNew && _fitk4UsingFixedBPnd
+        if ( isFRTMFitk4() )  // isFRTMNew && _fitk4
             _weights[iRun][jt] = SQR(_frtmConv_dCtdtE[iRun][jt]);
         else if ( _PETWeightingModel == Weights_Uniform )
             _weights[iRun][jt] = 1.;
@@ -2835,6 +3049,7 @@ void PETRTM::setWeightsInRun(int iRun)
     // E.g., post-hoc determination of _sigma2 assumes accurate separability of _sigma2 and weights = 1/sigma2
     for (int jt=0; jt<nTimeInRun; jt++)
         _weights[iRun][jt] *= static_cast<double>(nTimeInRun)/trace;
+    _simulator[iRun].setWeights(_weights[iRun]);
 }
 
 bool PETRTM::isValidID(int iRun, int iType, QChar eventID)
@@ -2927,6 +3142,7 @@ int PETRTM::countEvents()
 
 void PETRTM::setRTMModelType(QString model)
 {
+    FUNC_ENTER << model;
     if ( model == "SRTM3" )
         _modelRTM = RTM_SRTM3;
     else if ( model == "SRTM2" )
@@ -2950,18 +3166,22 @@ void PETRTM::setRTMModelType(QString model)
         qWarning() << "Error: model not defined: " << model;
         exit(1);
     }
+    FUNC_INFO << "model" << _modelRTM;
     setPrepared(false);
+    if ( isForwardModel() ) _simulator[0].setRTM3(isRTM3());
+    FUNC_EXIT << "model" << _modelRTM;
 };
 
 void PETRTM::setRTMModelType(RTMModelTypes model)
 {
     _modelRTM = model;
+    if ( isForwardModel() ) _simulator[0].setRTM3(isRTM3());
     setPrepared(false);
 };
 
 void PETRTM::createAllBasisFunctions()
 {
-//    FUNC_ENTER;
+    FUNC_ENTER;
     int nCoeff = countEvents();
     if ( nCoeff == 0 ) return;
 
@@ -2998,7 +3218,9 @@ void PETRTM::createAllBasisFunctions()
     calculatePseudoInverse();
     defineConditions(getConditionString());
     setPrepared(true);
-//    FUNC_EXIT;
+
+    downloadChallengesToSimulator();
+    FUNC_EXIT;
 }
 
 void PETRTM::createRunBasisFunction(QChar eventID, dVector &basis)
@@ -3168,7 +3390,7 @@ void PETRTM::calculateFRTMConvolution()
                 _frtmConv_CtE[jRun] = convolveEquilibration(jRun, _tissRegionRaw[jRun],   equilibrationVector);
                 for (int jt=0; jt<_dtBinsSec[jRun].size(); jt++)
                 {
-                    if ( _fitk4UsingFixedBPnd )
+                    if ( _fitk4 )
                         _frtmConv_CtE[jRun][jt] *= _BPndForIterations[jRun];
                     else
                         _frtmConv_CtE[jRun][jt] /= _tau4[jRun];
@@ -3484,3 +3706,34 @@ void PETRTM::getStimAveragingVectors(dVector &xForChallAv, dVector &yForChallAv,
 }
 
 /////////////////////////////////////////////////////////////////////////
+
+void PETRTM::downloadChallengesToSimulator()
+{
+    FUNC_ENTER;
+    for (int jRun=0; jRun<_nRuns; jRun++)
+    {
+        dVector onTime, offTime;
+        for ( int jChallenge=0; jChallenge<_maxChallenges; jChallenge++ )
+        {
+            int iShape = _challengeShape[jChallenge];
+            if ( isGoodChallengeInRun(jChallenge, jRun) )
+            {
+                QChar challengeID = _challengeEventID[jChallenge];
+                double tau   = _challengeTau[jChallenge];
+                int iCoeffChallenge = getEventCoefficient(challengeID);
+                if ( iCoeffChallenge < 0 ) continue;  // should never occur
+                for ( int jStim=0; jStim<_maxStimuli; jStim++)
+                {
+                    if ( isGoodStimulusInRun(jChallenge,jStim,jRun) )
+                    {
+                        onTime.append(_challengeOn[jChallenge][jStim]);
+                        offTime.append(_challengeOff[jChallenge][jStim]);
+                        FUNC_INFO << "defineChallenge" << iShape << tau << onTime << offTime;
+                        _simulator[jRun].defineChallenge(iShape, tau, onTime, offTime);
+                    }
+                }
+            }
+        }
+    }
+    FUNC_EXIT;
+}

@@ -16,6 +16,7 @@ private:
     dVector _BP0Values;
     int _numberSamples;
     simEngine _simulator;
+    bool _fitk4;
     PETRTM _PETRTM;
 
     inline double percentageError(double guess, double truth) {return 100.*(guess/truth-1.);}
@@ -23,7 +24,7 @@ private:
 
 signals:
     void progressLieDetector(int iProgress);
-    void finishedLieDetector(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4);
+    void finishedLieDetector(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4, double sigma2);
 };
 
 #endif // LIEDETECTOR_H

@@ -69,6 +69,8 @@ private:
     dVector _BP0Vector; // [# BP0 values]
     dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix; // [# BP0 values][nSimulations]
 
+    dVector _AICVector, _tau4Vector;
+
     LOESS _quadLOESS;
 
     QStringList _validBinSizeName = {"dt","delta-time","delta_time","deltaTime",
@@ -96,8 +98,9 @@ private:
     plotData *_plasmaPlot;   // setup page
     plotData *_RRPlot;       // setup page
 
-    plotData *_basisPlot;    // target page
-    plotData *_targetPlot;   // target page
+    plotData *_basisPlot;
+    plotData *_targetPlot;
+    plotData *_AICPlot;
 
     plotData *_errBPndPlot;  // vsBPnd page
     plotData *_errChallPlot; // vsBPnd page
@@ -146,6 +149,7 @@ private:
     // target region input
     QGroupBox *_targetSimulationGroupBox;
     QGroupBox *_targetDataGroupBox;
+    QRadioButton *_radioShowAIC;
     QRadioButton *_analyzeRealData;
     QRadioButton *_analyzeSimulation;
     QComboBox *_dataTargetRegion;
@@ -162,9 +166,10 @@ private:
     QLineEdit *_ignoreString;
     QLineEdit *_tau2RefAnalysis;
     QLineEdit *_tau4Analysis;
+    QGroupBox *_analysisGroupBox;
     QLabel *_tau2RefAnalysisLabel;
     QLabel *_tau4AnalysisLabel;
-    QCheckBox *_fitk4;
+    QCheckBox *_fitk4CheckBox;
     QCheckBox *_fitChallenge;
     // errors
     QLabel *_errorBPnd;
@@ -192,6 +197,7 @@ private:
     QLineEdit *_nSamplesBPndPerThread;
     QLabel *_nSamplesBPndLabel;
     QLabel *_nSamplesBPnd;
+    QLabel *_sigma2Label;
     QPushButton *_calculateBPndCurves;
     QPushButton *_clearBPndCurves;
     QCheckBox *_checkBoxBPndErrGraph;
@@ -213,6 +219,7 @@ private:
     void updatePlasmaGraph();
     void updateBasisGraph();
     void updateTargetGraph();
+    void updateAICvsTau4Graph();
     void enablePlasmaMatching(bool state);
     void addSimulationRR(plotData *whichPlot);
     void addFitRR(plotData *whichPlot);
@@ -252,6 +259,7 @@ private slots:
     void showBasisTarget();
     void showBasis();
     void showTarget();
+    void showAICvsTau4();
     inline void changedDataReferenceRegion() {updateAllGraphs();}
     inline void changedDataTargetRegion()    {updateAllGraphs();}
     void clickedAnalyzeStimulation(bool state);
@@ -318,7 +326,7 @@ private slots:
 
 public slots:
     void updateLieDetectorProgress(int iProgress);
-    void finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4);
+    void finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4, double sigma2);
 };
 
 #endif // SIMWINDOW_H

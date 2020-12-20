@@ -133,6 +133,7 @@ public:
     inline QChar getBasisID(int iBasis) {return _basisID[iBasis];}
     inline int getNumberTimePoints()    {return _nTime;}
     inline double getSigma2()           {return _sigma2;}
+    inline double getAIC()              {return 2*_nCoeff + _nTime * qLn(_sigma2);}
     inline double getAverage()          {return _average;}
     inline double getBeta(int iCoeff)   {return _beta_c[iCoeff];}
     inline double getSEM(int iCoeff)    {return _sem_c[iCoeff];}

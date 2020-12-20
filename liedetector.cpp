@@ -7,6 +7,7 @@ lieDetector::lieDetector(const int numberSamples, const dVector BP0Values, const
     _BP0Values      = BP0Values;
     _simulator      = simulator;
     _PETRTM         = pet;
+    _fitk4          = _PETRTM.getFitk4State() && _PETRTM.isForwardModel();
 }
 
 void lieDetector::run()
@@ -26,9 +27,13 @@ void lieDetector::run()
     int iDiv = qMax(1,nSamplesTotal/10);
     qDebug() << "lieDetector::run 3.5" << iDiv << _BP0Values.size() << _numberSamples;
 
+    double tau4Guess = _PETRTM.getTau4Nominal();
+    if ( tau4Guess == 0. ) tau4Guess = 10.;
+
     dMatrix errBPnd, errChall, tau2Ref, errTau4;
     int nBPValues = _BP0Values.size();
     errBPnd.resize(nBPValues);   errChall.resize(nBPValues);  tau2Ref.resize(nBPValues);  errTau4.resize(nBPValues);
+    double sigma2Sum = 0.;
     for (int jBP=0; jBP<nBPValues; jBP++)
     {
         errBPnd[jBP].resize(_numberSamples); errChall[jBP].resize(_numberSamples); tau2Ref[jBP].resize(_numberSamples); errTau4[jBP].resize(_numberSamples);
@@ -49,6 +54,11 @@ void lieDetector::run()
             _PETRTM.setTissueVector(tissueVector);
             _PETRTM.prepare();
             _PETRTM.fitData(tissueVector);
+
+            if ( _PETRTM.isForwardModel() )
+                sigma2Sum += _PETRTM.getSimulationSigma2(0);
+            else
+                sigma2Sum += _PETRTM.getSigma2();
 
             // update the BP error
             double guess = _PETRTM.getBP0InRun(0);
@@ -72,7 +82,8 @@ void lieDetector::run()
             tau2Ref[jBP][jSample] = guess;
         }
     }
-    emit finishedLieDetector(errBPnd, errChall, tau2Ref, errTau4);
+    sigma2Sum /= static_cast<double>(nBPValues*_numberSamples);
+    emit finishedLieDetector(errBPnd, errChall, tau2Ref, errTau4, sigma2Sum);
     qDebug() << "lieDetector::run exit";
 }
 

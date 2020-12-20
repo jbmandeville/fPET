@@ -1,4 +1,5 @@
 QT += gui printsupport
+DEFINES += QT_NO_DEBUG_OUTPUT
 QMAKE_MAC_SDK = macosx10.14
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
