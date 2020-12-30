@@ -1548,6 +1548,27 @@ void SimWindow::addSimulationTarget()
         yTAC[jt]  = _simulator.getCtCoarse(jt);
     }
     _targetPlot->setData(xTime,yTAC);
+
+    _targetPlot->addCurve(0,"exclusions");
+    _targetPlot->setColor(Qt::black);
+    _targetPlot->setLineThickness(0);
+    _targetPlot->setPointSize(20);
+    _targetPlot->setPointStyle(QCPScatterStyle::ssStar);
+    _targetPlot->setExport(false);
+    // set time vectors
+    dVector xDataIgnore, yDataIgnore;
+    bVector ignorePoint;
+    for (int jt=0; jt<nTime; jt++) // loop over ALL points
+    {
+        if ( ! _PETRTM.getWeight(jt) != 0. )
+        {
+            xDataIgnore.append(xTime[jt]);
+            yDataIgnore.append(yTAC[jt]);
+            ignorePoint.append(true);
+        }
+    }
+    _targetPlot->setData(xDataIgnore, yDataIgnore, ignorePoint);
+
     FUNC_EXIT;
 }
 void SimWindow::addDataCurveTarget()
@@ -2706,16 +2727,17 @@ void SimWindow::calculateTimeCurves()
             }
             else
             { // calculate the percent error in BPnd
-                QString numberString;  numberString.setNum(jBin);
-                _numberTimeBins->setText(numberString);  changedNumberBins();
+                _ignoreString->setText(QString("%1-n").arg((jBin)));
+                _PETRTM.setIgnoredPoints(0,true,_ignoreString->text());
+                analyzeTAC();
 
                 double truth = _simulator.getBP0();
                 double guess = _PETRTM.getBP0InRun(0);
                 errVector.append(percentageError(guess,truth));
 
-                _simulator.setNumberBins(saveTimeBinVector.length());
-                _simulator.setDurationBins(saveTimeBinVector);
-                _PETRTM.setTimeBinsSec(0,_simulator.getTimeBinVectorSec());
+                _ignoreString->setText("");
+                _PETRTM.setIgnoredPoints(0,true,_ignoreString->text());
+                analyzeTAC();
             }
         }
     }

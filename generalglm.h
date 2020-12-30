@@ -61,7 +61,7 @@ private:
     bool _sigmaREKnown=false;
 
     bool _basisFunctionsChanged=false;  // use this in a set/get fashion to determine when basis functions have changed
-    dMatrix _XTWXm1_cc;      // used for variance for OLS
+    dMatrix _XTWXm1_cc;     // used for variance for OLS
     int _nIncluded;          // sum of non-zero weights
     dVector _weight_t;
     dVector _fit_t;
