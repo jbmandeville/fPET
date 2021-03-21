@@ -1,6 +1,6 @@
 QT += gui printsupport
-DEFINES += QT_NO_DEBUG_OUTPUT
-QMAKE_MAC_SDK = macosx10.14
+#DEFINES += QT_NO_DEBUG_OUTPUT
+#QMAKE_MAC_SDK = macosx11.1
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 LIBS += -L"$$_PRO_FILE_PWD_/3rdparty/fftw-3.3.8/lib" -lfftw3

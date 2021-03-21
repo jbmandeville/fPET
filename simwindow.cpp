@@ -139,7 +139,10 @@ void SimWindow::getTableDataFile()
         return;
     else
     {
+        FUNC_INFO << 1;
+        FUNC_INFO << 1.25 << _dataTable.size();
         QString errorString = utilIO::readTimeTableFile(fileName, _dataColumnNames, _dataTable);
+        FUNC_INFO << 1.5;
         if ( !errorString.isEmpty() )
         {
             QMessageBox msgBox;
@@ -149,11 +152,14 @@ void SimWindow::getTableDataFile()
         }
         else
         {
+            FUNC_INFO << 2;
             int iColumnBinSize=-1;  int iColumnBinTime=-1;
             if ( !defineTimeBinsFromBinSize(_validBinSizeName, iColumnBinSize) )
             {
+                FUNC_INFO << 3;
                 if ( !defineTimeBinsFromTimePoints(_validBinTimeName, iColumnBinTime) )
                 {
+                    FUNC_INFO << 4;
                     QString binList = _validBinSizeName.join(", ");
                     QString binTime = _validBinTimeName.join(", ");
                     QMessageBox msgBox;
@@ -612,6 +618,11 @@ void SimWindow::changedSimulationStartingPoint()
     }
     simulationStartingPoint startingPoint = static_cast<simulationStartingPoint>(_simulationStartingPoint->currentIndex());
     _simulator.setSimulationStartingPoint(startingPoint);
+
+    _tau1Ref->setEnabled( !simStartsFromDataFit() );
+    _plasmaFracRef->setEnabled( !simStartsFromDataFit() );
+    _noiseRef->setEnabled( !simStartsFromDataFit() );
+
     updateAllGraphs();
 }
 

@@ -54,7 +54,7 @@ private:
     PETRTM _PETRTM;
     // Import real data as ROIs from a table file
     QStringList _dataColumnNames; // column names
-    dMatrix _dataTable;           // data table [time][columns]
+    dMatrix _dataTable;           // data table [columns][time]
     iVector _dtBinsSec;           // dt steps in time bins in seconds
     dVector _timeBins;            // time for bins (center of bin)
 
