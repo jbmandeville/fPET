@@ -724,21 +724,20 @@ int PETRTM::readGLMFileNewFormat(int iRun, QString fileName)
 void PETRTM::calculateTau4andTau2Ref(int iRun, dVector &AICVector, dVector &tau4Vector, dVector &tau2RefVector,
                                      double &bestTau4, double &bestTau2Ref)
 { // pass current value of tau4 in bestTau4
+    FUNC_ENTER << "bestTau4" << bestTau4;
     tau4Vector.clear();  AICVector.clear();  tau2RefVector.clear();
     for (double tau4=0.; tau4<2.*bestTau4; tau4+=0.5)
     {
-        setTau4Nominal(tau4);
+        setTau4(iRun,tau4);
         prepare();
         fitByForwardModel();
         double AIC = getSimulationAIC(iRun);
-        FUNC_INFO << "tau4, AIC" << tau4 << AIC;
         double tau2Ref = getTau2RefInRun(iRun);
         tau4Vector.append(tau4);
         AICVector.append(AIC);
         tau2RefVector.append(tau2Ref);
         FUNC_INFO << "AIC[" << tau4 << "] =" << AIC << "tau2Ref =" << getTau2RefInRun(iRun);
     }
-    setTau4Nominal(bestTau4);
 
     double AICMin=1.e30;
     for (int jTau4=0; jTau4<tau4Vector.size(); jTau4++)
@@ -769,6 +768,7 @@ void PETRTM::calculateTau4andTau2Ref(int iRun, dVector &AICVector, dVector &tau4
 
     FUNC_INFO << "** CALC: bestTau4, bestTau2Ref = **" << bestTau4 << bestTau2Ref;
 }
+
 void PETRTM::calculateTau4atFixedTau2Ref(int iRun, double &bestTau4)
 {
     dVector AICVector, tau4Vector;
@@ -777,10 +777,11 @@ void PETRTM::calculateTau4atFixedTau2Ref(int iRun, double &bestTau4)
 
 void PETRTM::calculateTau4atFixedTau2Ref(int iRun, dVector &AICVector, dVector &tau4Vector, double &bestTau4)
 { // pass current value of tau4 in bestTau4
+    FUNC_ENTER << bestTau4;
     tau4Vector.clear();  AICVector.clear();
     for (double tau4=0.; tau4<2.*bestTau4; tau4+=0.5)
     {
-        setTau4Nominal(tau4);
+        setTau4(iRun,tau4);
         prepare();
         fitByForwardModel();
         double AIC = getSimulationAIC(iRun);
@@ -788,7 +789,6 @@ void PETRTM::calculateTau4atFixedTau2Ref(int iRun, dVector &AICVector, dVector &
         AICVector.append(AIC);
         FUNC_INFO << "AIC[" << tau4 << "] =" << AIC << "tau2Ref =" << getTau2RefInRun(iRun);
     }
-    setTau4Nominal(bestTau4);
 
     double AICMin=1.e30;
     for (int jTau4=0; jTau4<tau4Vector.size(); jTau4++)
@@ -811,7 +811,7 @@ void PETRTM::calculateTau4atFixedTau2Ref(int iRun, dVector &AICVector, dVector &
     bestTau4    /= probSum;
     setTau4(0,bestTau4);
 
-    FUNC_INFO << "** bestTau4, currentTau2Ref = **" << bestTau4 << getTau2RefInRun(iRun);
+    FUNC_EXIT << "** bestTau4, currentTau2Ref = **" << bestTau4 << getTau2RefInRun(iRun);
 }
 
 dVector PETRTM::getEquilibrationVector(int iFile)
@@ -1248,8 +1248,10 @@ dPoint2D PETRTM::getk2RefInRun(int iRun)
 
 dPoint2D PETRTM::getR1InRun(int iRun)
 {
-    dPoint2D R1;  R1.x = R1.y = 0.; // save value and error in x,y
-    if ( isRTM3() )
+    dPoint2D R1 = {0.,0.};  // save value and error in x,y
+    if ( isForwardModel() )
+        R1.x = _simulator[iRun].getR1();
+    else if ( isRTM3() )
     {
         if ( _R1EventCoefficient[iRun] < 0 ) return R1;
         R1.x = getBeta(_R1EventCoefficient[iRun]);
@@ -1260,12 +1262,6 @@ dPoint2D PETRTM::getR1InRun(int iRun)
         dPoint2D k2    = getk2InRun(iRun);
         dPoint2D k2Ref = getk2RefInRun(iRun);
         dPoint2D R1;  R1.x = k2.x / k2Ref.x;  R1.y = R1.x * qSqrt( SQR(k2.y/k2.x) + SQR(k2Ref.y/k2Ref.x) );
-        return R1;
-    }
-    if ( isForwardModel() )
-    {
-        dPoint2D R1 = {0.,0.};
-        R1.x = _simulator[iRun].getR1();
     }
     return R1;
 }
@@ -2524,7 +2520,7 @@ void PETRTM::prepare()
         }
         else if ( isForwardModel() )
         {
-            FUNC_INFO << "forward model";
+            FUNC_INFO << "forward model" << _modelRTM;
             RTMModelTypes saveModel = _modelRTM;
             if ( isRTM3() )
                 setRTMModelType(RTM_SRTM3);
@@ -2558,11 +2554,13 @@ void PETRTM::fitByForwardModel(dMatrix &yFit)
     {
         double BP0 = qMax(0.,_BPndForIterations[jRun]);
         bool includeChallenge = getNumberChallengesInRun(jRun) == 1;
-        _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, 0., _tau4Nominal,
-                             _fitk4, isRTM3(), includeChallenge, nBootStrap);
-        FUNC_INFO << "assign yFit";
+        double tau4 = _tau4[jRun];
+//        if ( _fitk4 ) tau4 = _tau4Nominal;
+//        _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, 0., tau4,
+//                             _fitk4, isRTM3(), includeChallenge, nBootStrap);
+        _simulator[jRun].fit(BP0, getR1InRun(jRun).x, getk2RefInRun(jRun).x, 0., tau4,
+                             false, isRTM3(), includeChallenge, nBootStrap);
         yFit[jRun] = _simulator[jRun].getCtFit();
-        FUNC_INFO << "assigned yFit";
     }
     FUNC_EXIT;
 }
@@ -2573,15 +2571,25 @@ void PETRTM::fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
     // iterative methods
     bool fitByIteration = (isFRTM() && _tau4Nominal != 0.);
     if ( isForwardModel() )
-        fitByForwardModel(yFit);
+    {
+        if ( _fitk4 )
+        {
+            double tau4 = _tau4Nominal;
+            dVector AICVector, tau4Vector;
+            calculateTau4atFixedTau2Ref(0, AICVector, tau4Vector, tau4);
+        }
+        fitByForwardModel(yFit);  // if fitting k4, this will use new value
+    }
     else if (  fitByIteration )
         fitDataByGLMIterationForConsistency(timeSeriesVector, yFit);
     else
         fitDataByGLM(timeSeriesVector, yFit); // 1-step
 
+    /*
     // potentially fit k4 as 2nd stage
     if ( _fitk4 && !isForwardModel() )  // k4 fitting has been selected, but the current 1st-stage model could be anything
     {
+        FUNC_INFO << "OOPS: here";
         RTMModelTypes saveTimeModel = _modelRTM;
         // Change models, prepare new basis functions (with newTAC=true), and fit the model as a starting point
         if ( isRTM3() )
@@ -2598,6 +2606,7 @@ void PETRTM::fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit)
         if (  fitByIteration )
             fitDataByGLMIterationForConsistency(timeSeriesVector, yFit);
     }
+    */
     FUNC_EXIT;
 }
 
@@ -2713,7 +2722,7 @@ void PETRTM::fitDataByGLMIterationForConsistency(QVector<ROI_data> timeSeriesVec
     bool goodIteration = moreIterations;
 
     _nIterations=1;
-    int maxIterations = 20;
+    int maxIterations = 1;
 
     // the model should have been fit using fitDataByGLM prior to this function
     double lastSigma2 = getSigma2();
@@ -2980,20 +2989,24 @@ void PETRTM::readGLMIgnoreBlock(QTextStream *in_stream, int iRun, QString inputS
 
 void PETRTM::setIgnoredPoints(int iRun, bool resetWeights, QString ignoreString)
 { // the ignored string should have fields like "5-10" separated by commas or spaces
+    FUNC_ENTER << resetWeights << ignoreString;
     if ( resetWeights ) // set weights using a specific time model
         setWeightsInRun(iRun);
 
-    iVector includeVolume; includeVolume.fill(false,_weights[iRun].size());
-    int error = utilString::decodeSelectionList(ignoreString, true, includeVolume);
+    iVector excludeVolume; excludeVolume.fill(false,_weights[iRun].size());
+    int error = utilString::decodeSelectionList(ignoreString, true, excludeVolume);
     if ( error == 0 )
     {  // this section turns weight on/off but does not alter non-binary values
-        for (int jt=0; jt<includeVolume.size(); jt++)
+        FUNC_INFO << excludeVolume;
+        for (int jt=0; jt<excludeVolume.size(); jt++)
         {
-            if ( includeVolume[jt] ) _weights[iRun][jt]=0.;
+            if ( excludeVolume[jt] ) _weights[iRun][jt]=0.;
         }
         setPrepared(false);
         _ignoreString[iRun] = ignoreString;
+        _simulator[iRun].setWeights(_weights[iRun]);
     }
+    FUNC_EXIT;
 }
 
 QString PETRTM::getIgnoredString(int iRun)
@@ -3016,11 +3029,13 @@ QString PETRTM::getIgnoredString(int iRun)
 
 void PETRTM::setWeightsInRun(int iRun)
 {
+    FUNC_ENTER;
     double trace=0.;
     int nTimeInRun = _dtBinsSec[iRun].size();
-    if ( _weights[iRun].size() != nTimeInRun )
-        _weights[iRun].resize(nTimeInRun);
+    FUNC_INFO << "compare" << _weights[iRun].size() << nTimeInRun;
+    if ( _weights[iRun].size() != nTimeInRun ) _weights[iRun].resize(nTimeInRun);
 
+    FUNC_INFO << isFRTMFitk4() << nTimeInRun;
     for (int jt=0; jt<nTimeInRun; jt++)
     {
         if ( isFRTMFitk4() )  // isFRTMNew && _fitk4
@@ -3050,6 +3065,7 @@ void PETRTM::setWeightsInRun(int iRun)
     for (int jt=0; jt<nTimeInRun; jt++)
         _weights[iRun][jt] *= static_cast<double>(nTimeInRun)/trace;
     _simulator[iRun].setWeights(_weights[iRun]);
+    FUNC_EXIT;
 }
 
 bool PETRTM::isValidID(int iRun, int iType, QChar eventID)

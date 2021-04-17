@@ -39,9 +39,6 @@ private:
     bool _referenceRegionIsDefined=false;
     QString _petConditionsFromTimeModelFile; // a copy to be applied when the time model is read completely (so it won't be trimmed by incomplete info)
 
-    dVector _fmGlobalTau4;
-    dVector _fmGlobalAIC;
-
     // # of runs
     int _nRuns=0;
     // per run
@@ -173,6 +170,7 @@ public:
     void calculateTau4atFixedTau2Ref(int iRun, double &bestTau4);
     void calculateTau4atFixedTau2Ref(int iRun, dVector &AICVector, dVector &tau4Vector, double &bestTau4);
 
+
     void fitData(dMatrix timeSeriesVector);
     void fitData(dMatrix timeSeriesVector, dMatrix &yFit);
     void fitData(QVector<ROI_data> timeSeriesVector, dMatrix &yFit);
@@ -260,8 +258,6 @@ public:
 
     // getters
     inline int getSimulatorSize() {return _simulator.size();}
-    inline dVector getFMGlobalTau4() {return _fmGlobalTau4;}
-    inline dVector getFMGlobalAIC()  {return _fmGlobalAIC;}
     inline double getSimulationFit(int iRun, int iTime) {return _simulator[iRun].getCtCoarse(iTime);}
     inline double getSimulationSigma2(int iRun) {return _simulator[iRun].getSigma2();}
     inline double getSimulationAIC(int iRun)    {return _simulator[iRun].getAIC();}

@@ -1469,6 +1469,7 @@ void SimWindow::updateReferenceGraph()
     // update the plot: RR
     _RRPlot->init();
     _RRPlot->setLegendOn(true);
+    _RRPlot->setLabelYAxis("TAC (e.g., kBq/ml)");
 
     if ( simStartsFromPlasmaFit() || simStartsFromDataFit() )
         addFitRR(_RRPlot);
@@ -1549,6 +1550,7 @@ void SimWindow::addSimulationTarget()
         _targetPlot->setColor(Qt::red); // 1st curve
     else
         _targetPlot->setColor(Qt::gray);
+    _targetPlot->setLabelYAxis("TAC (e.g., kBq/ml)");
     _targetPlot->setPointSize(3);
     int nTime = _simulator.getNumberTimeBinsCoarse();
     dVector xTime;   xTime.resize(nTime);
@@ -2510,7 +2512,8 @@ void SimWindow::clearBPndCurves()
 void SimWindow::calculateBPndCurves()
 {
     bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
-    if ( noisy || _PETRTM.isForwardFitk4() )
+//    if ( noisy || _PETRTM.isForwardFitk4() )
+    if ( noisy )
     {
         calculateBPndCurvesInThreads();
         return;
@@ -2526,7 +2529,6 @@ void SimWindow::calculateBPndCurves()
 
     dVector xVector, errBPnd, errChall, tau2Ref, errTau4, errBPndRTM2, errChallRTM2;
     double sigma2Sum=0.;
-    double tau4Guess = _PETRTM.getTau4InRun(0);
 
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
     {
@@ -2540,10 +2542,7 @@ void SimWindow::calculateBPndCurves()
             refRegion[0][jt]    = _simulator.getCrCoarse(jt);
             tissueVector[0][jt] = _simulator.getCtCoarse(jt);
         }
-        _PETRTM.setReferenceRegion(refRegion);
         _PETRTM.setTissueVector(tissueVector);
-        if ( _PETRTM.isForwardFitk4() )
-            _PETRTM.setTau4(0,tau4Guess);
 
         _PETRTM.prepare();
         _PETRTM.fitData(tissueVector,fitVector);
@@ -2566,6 +2565,7 @@ void SimWindow::calculateBPndCurves()
         {
             truth = _simulator.getTau4();
             guess = _PETRTM.getTau4InRun(0);
+            FUNC_INFO << "** tau4 **" << truth << guess;
             errTau4.append(percentageError(guess,truth));
         }
 
@@ -2831,6 +2831,7 @@ void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall,
     }
     for (int jBP=0; jBP<nBP0Values; jBP++)
     {
+        FUNC_INFO << "** jBP errtau4" << jBP << errTau4[jBP][0];
         for ( int jSample=0; jSample<nSamples; jSample++)
         {
             _errBPndMatrix[jBP].append(errBPnd[jBP][jSample]);
@@ -2878,10 +2879,14 @@ void SimWindow::finishedLieDetectorAllThreads()
     int nBP0Values = _BP0Vector.size();
     int nSamples   = _nThreads * _numberSimulationsPerThread;
 
+    FUNC_INFO << "nSamples" << nSamples;
+
     dVector errBP, errChall, tau2Ref, errTau4, errBPSEM, errChallSEM, tau2RefSEM, errTau4SEM;
     // determine the means
     for (int jBP=0; jBP<nBP0Values; jBP++)
     {
+        FUNC_INFO << "** errTau4Matrix" << _errTau4Matrix[jBP];
+
         errBP.append(calculateMean(_errBPndMatrix[jBP]));
         errChall.append(calculateMean(_errChallMatrix[jBP]));
         tau2Ref.append(calculateMean(_tau2RefMatrix[jBP]));
@@ -2926,6 +2931,8 @@ void SimWindow::finishedLieDetectorAllThreads()
     dVector xVector;
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
         xVector.append(BP0);
+
+    FUNC_INFO << "** set data" << _BP0Vector << errTau4;
 
     _errBPndPlot->setData(_BP0Vector,errBP,errBPSEM);
     _errChallPlot->setData(_BP0Vector,errChall,errChallSEM);
