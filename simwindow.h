@@ -63,6 +63,8 @@ private:
     double _BPndStepValue = 0.5;
     double _timeLowValue  = 20.;
     double _timeHighValue = 80.;
+    double _tau4HighValue = 30.;
+    double _tau4StepValue = 1.;
     int _nThreads = 1;
     int _numberSimulationsPerThread = 1;
 
@@ -86,6 +88,7 @@ private:
     QWidget *_targetPage;
     QWidget *_sweepBPndPage;
     QWidget *_sweepTimePage;
+    QWidget *_sweepk4Page;
 
     QComboBox *_threadsComboBox;
     QStatusBar *_statusBar;
@@ -95,25 +98,28 @@ private:
     QStatusBar *_TRStatusBar;
 
     // plots
-    plotData *_plasmaPlot;   // setup page
-    plotData *_RRPlot;       // setup page
+    plotData *_plotPlasma;   // setup page
+    plotData *_plotRR;       // setup page
 
-    plotData *_basisPlot;
-    plotData *_targetPlot;
-    plotData *_AICPlot;
+    plotData *_plotBasis;
+    plotData *_plotTarget;
 
-    plotData *_errBPndPlot;  // vsBPnd page
-    plotData *_errChallPlot; // vsBPnd page
-    plotData *_tau2RefPlot;  // vsBPnd page
-    plotData *_errk4Plot;
+    plotData *_plotErrBPndVsBPnd;  // vsBPnd page
+    plotData *_plotErrChallVsBPnd; // vsBPnd page
+    plotData *_plotTau2RefVsBPnd;  // vsBPnd page
+    plotData *_plotErrk4VsBPnd;
 
-    plotData *_errBPndOrChallVsTimePlot;
+    plotData *_plotErrBPndOrChallVsTime;  // vs time page
+
+    plotData *_plotErrBPndVsTau4;  // vs tau4 page
+    plotData *_plotErrChallVsTau4; // vs tau4 page
+    plotData *_plotAICVsTau4;  // vs tau4 page
 
     // setup page
     QComboBox *_whichPlasmaPlot;
     QCheckBox *_clearPlasmaPlot;
     QVBoxLayout *_setupPlotLayout;
-    QVBoxLayout *_targetPlotLayout;
+    QVBoxLayout *_plotTargetLayout;
     // timing
     QLineEdit *_numberTimeBins;
     QSpinBox *_binIndex;
@@ -125,6 +131,7 @@ private:
     QLineEdit *_bolusMag;
     QLineEdit *_tauDecay;
     QLineEdit *_KBol;
+    QLineEdit *_KBolDelay;
     QLineEdit *_fastTau;
     QLineEdit *_slowTau;
     QLineEdit *_fastFraction;
@@ -193,6 +200,10 @@ private:
     QLineEdit *_BPndHigh;
     QLineEdit *_BPndStep;
 
+    // vsk4 page
+    QLineEdit *_tau4High;
+    QLineEdit *_tau4Step;
+
     QLabel *_nSamplesBPndPerThreadLabel;
     QLineEdit *_nSamplesBPndPerThread;
     QLabel *_nSamplesBPndLabel;
@@ -200,8 +211,8 @@ private:
     QLabel *_sigma2Label;
     QPushButton *_calculateBPndCurves;
     QPushButton *_clearBPndCurves;
-    QCheckBox *_checkBoxBPndErrGraph;
-    QCheckBox *_checkBoxChallErrGraph;
+    QCheckBox *_checkBoxBPndErrVsBPnd;
+    QCheckBox *_checkBoxChallErrVsBPnd;
     QCheckBox *_checkBoxk4ErrGraph;
     QCheckBox *_checkBoxTau2RefGraph;
 
@@ -211,10 +222,18 @@ private:
     QPushButton *_calculateTimeCurves;
     QPushButton *_clearTimeCurves;
 
+    // vs k4 page
+    QCheckBox *_checkBoxBPndErrVsTau4;
+    QCheckBox *_checkBoxChallErrVsTau4;
+    QCheckBox *_checkBoxAICVsTau4;
+    QPushButton *_calculateTau4Curves;
+    QPushButton *_clearTau4Curves;
+
     void createSetupPage();
     void createTargetPage();
     void createSweepBPndPage();
-    void createVersusTimePage();
+    void createSweepTimePage();
+    void createSweepTau4Page();
 
     void updatePlasmaGraph();
     void updateBasisGraph();
@@ -274,6 +293,7 @@ private slots:
     void changedBolusMag();
     void changedTauBolus();
     void changedInfusion();
+    void changedInfusionDelay();
 
     void changedFastElimination();
     void changedSlowElimination();
@@ -311,6 +331,10 @@ private slots:
     void calculateBPndCurvesInThreads();
     void clearBPndCurves();
     void changedVersusBPndGraphs();
+    void changedVersusTau4Graphs();
+
+    void changedTau4High();
+    void changedTau4Step();
 
     void changedTimeLow();
     void changedTimeHigh();
@@ -323,6 +347,9 @@ private slots:
     bool defineTimeBinsFromTimePoints(QStringList validBinName, int &iColumn);
 
     void changedSimulationStartingPoint();
+
+    void calculateTau4Curves();
+    void clearTau4Curves();
 
 public slots:
     void updateLieDetectorProgress(int iProgress);

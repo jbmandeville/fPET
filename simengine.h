@@ -31,6 +31,7 @@ private:
     double _magBolus=15.e5;
     double _tauBolus=0.25;
     double _KBol=45.;
+    double _KBolDelay=0.;
     // Elimination
     double _fracFast=0.9;   // fraction of elimination that is fast
     double _kFast=1./1.2;    // 1/T_alpha fast elimination
@@ -110,6 +111,7 @@ public:
     inline void setMagBolus(double value)     {_magBolus = value;}
     inline void setTauBolus(double value)     {_tauBolus = value;}
     inline void setKBol(double value)         {_KBol = value;}
+    inline void setKBolDelay(double value)    {_KBolDelay = value;}
     inline void setFastFraction(double value) {_fracFast = value;}
     inline void setKFastElim(double value)    {_kFast = value;}
     inline void setKSlowElim(double value)    {_kSlow = value;}
@@ -146,7 +148,8 @@ public:
     inline int getNumberBins()      {return _nBins;}
     inline double getMagBolus()     {return _magBolus;}
     inline double getTauBolus()     {return _tauBolus;}
-    inline double getKBol()  {return _KBol;}
+    inline double getKBol()         {return _KBol;}
+    inline double getKBolDelay()    {return _KBolDelay;}
     inline double getFastFraction() {return _fracFast;}
     inline double getKFastElim()    {return _kFast;}
     inline double getKSlowElim()    {return _kSlow;}

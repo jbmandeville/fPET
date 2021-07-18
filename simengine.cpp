@@ -107,6 +107,8 @@ void simEngine::generatePlasmaTAC()
     {
         double time = _timeFine[jt];
         double plasmaInput = magInfusion + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
+        if ( time < _KBolDelay )
+            plasmaInput = 0. + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
         if ( jt != 0. )
         {
             double dCpdt_fast  = _fracFast      * plasmaInput - _kFast * Cp_fast;

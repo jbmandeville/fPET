@@ -6,6 +6,7 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 LIBS += -L"$$_PRO_FILE_PWD_/3rdparty/fftw-3.3.8/lib" -lfftw3
 INCLUDEPATH += 3rdparty/fftw-3.3.8/include
 
+CONFIG+=sdk_no_version_check
 #CONFIG += c++11 console
 #CONFIG -= app_bundle
 

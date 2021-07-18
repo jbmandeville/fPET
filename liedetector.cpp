@@ -14,7 +14,6 @@ void lieDetector::run()
 {
     qDebug() << "lieDetector::run enter";
     int nTime = _simulator.getNumberBins();
-    dMatrix refRegion;      refRegion.resize(1);    refRegion[0].resize(nTime);
     dMatrix tissueVector;   tissueVector.resize(1); tissueVector[0].resize(nTime);
 
     _PETRTM.updateConditions();
@@ -46,10 +45,7 @@ void lieDetector::run()
             _simulator.run();  // run the simulations with randomized noise
             // Perform the analysis
             for (int jt=0; jt<nTime; jt++)
-            {
-                refRegion[0][jt]    = _simulator.getCrCoarse(jt);
                 tissueVector[0][jt] = _simulator.getCtCoarse(jt);
-            }
             _PETRTM.setTissueVector(tissueVector);
             _PETRTM.prepare();
             _PETRTM.fitData(tissueVector);
