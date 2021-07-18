@@ -28,7 +28,8 @@ SimWindow::SimWindow()
     _tabTimeSpace->addTab(_targetPage, tr("Target Region"));
     _tabTimeSpace->addTab(_sweepBPndPage, tr("Sweep BPnd"));
     _tabTimeSpace->addTab(_sweepTimePage, tr("Sweep time"));
-    _tabTimeSpace->addTab(_sweepk4Page, tr("Sweep k4"));
+    _tabTimeSpace->addTab(_sweepTau4Page, tr("Sweep k4"));
+    _tabTimeSpace->setTabEnabled(4,false);  // usually start in SRTM (no k4)
 
     QWidget *centralWidget = new QWidget(this);
     this->setCentralWidget( centralWidget );
@@ -698,6 +699,9 @@ void SimWindow::changedModelType(int indexInBox)
         _PETRTM.setRTMModelType("fmFRTM3");
     else if ( indexInBox == RTM_fmFRTM2 )
         _PETRTM.setRTMModelType("fmFRTM2");
+
+    _tabTimeSpace->setTabEnabled(4,_PETRTM.isForwardModel());  // only enable with k4 (not SRTM)
+
     _PETRTM.setPrepared(false);
     updateAllGraphs();
 
@@ -1262,7 +1266,8 @@ void SimWindow::createSweepTau4Page()
     // 1) BPnd_err vs. time
     // 2) Challenge error vs. time
 
-    _sweepk4Page = new QWidget();
+    _sweepTau4Page = new QWidget();
+//    _sweepTau4Page->setVisible(false);  // start in SRTM
 
     _plotErrBPndVsTau4  = new plotData(8);
     _plotErrChallVsTau4 = new plotData(9);
@@ -1342,7 +1347,7 @@ void SimWindow::createSweepTau4Page()
     fullLayout->setStretch(0,100);
     fullLayout->setStretch(1,1);
 
-    _sweepk4Page->setLayout(fullLayout);
+    _sweepTau4Page->setLayout(fullLayout);
 
     /////////////// Plotting tool bars //////////////////////
     const QIcon *dragX = new QIcon(":/My-Icons/dragX.png");

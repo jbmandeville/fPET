@@ -88,7 +88,7 @@ private:
     QWidget *_targetPage;
     QWidget *_sweepBPndPage;
     QWidget *_sweepTimePage;
-    QWidget *_sweepk4Page;
+    QWidget *_sweepTau4Page;
 
     QComboBox *_threadsComboBox;
     QStatusBar *_statusBar;
