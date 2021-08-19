@@ -71,7 +71,8 @@ private:
     dVector _BP0Vector; // [# BP0 values]
     dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix; // [# BP0 values][nSimulations]
 
-    dVector _AICVector, _tau4Vector;
+    dVector _tau4Vector;
+    dMatrix _AICMatrix;
 
     LOESS _quadLOESS;
 
@@ -253,7 +254,8 @@ private:
     QString analyzeString(double truth, double guess);
     inline double percentageError(double guess, double truth) {return 100.*(guess/truth-1.);}
     double bestTau2RefForRTM2();
-    void finishedLieDetectorAllThreads();
+    void finishedLieDetectorBPndAllThreads();
+    void finishedLieDetectorTau4AllThreads();
     void setThreadVisibility(bool state);
     double calculateMean(dVector vec);
     double calculateStDev(double mean, dVector vec);
@@ -349,11 +351,13 @@ private slots:
     void changedSimulationStartingPoint();
 
     void calculateTau4Curves();
+    void calculateTau4CurvesInThreads();
     void clearTau4Curves();
 
 public slots:
     void updateLieDetectorProgress(int iProgress);
-    void finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4, double sigma2);
+    void finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4, double sigma2);
+    void finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errChall, dMatrix AIC, double sigma2);
 };
 
 #endif // SIMWINDOW_H

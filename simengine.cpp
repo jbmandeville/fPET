@@ -106,9 +106,11 @@ void simEngine::generatePlasmaTAC()
     for ( int jt=0; jt<nTime; jt++)
     {
         double time = _timeFine[jt];
-        double plasmaInput = magInfusion + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
+        double plasmaInput;
         if ( time < _KBolDelay )
-            plasmaInput = 0. + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
+            plasmaInput = 0.          + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
+        else
+            plasmaInput = magInfusion + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
         if ( jt != 0. )
         {
             double dCpdt_fast  = _fracFast      * plasmaInput - _kFast * Cp_fast;
@@ -141,7 +143,7 @@ double simEngine::baselineBasisFunction(int iPoly, double x)
 double simEngine::gammaVariateFunction(double time, double onset, double alpha, double tau)
 { // return a normalized gamma variate function of form t^alpha * exp(alpha*t)
     double t = (time - onset) / tau;
-    return qPow(t,alpha) * exp(alpha*(1.-t));
+    return qPow(t,alpha) * qExp(alpha*(1.-t));
 }
 
 void simEngine::generateReferenceTAC()
@@ -303,7 +305,7 @@ double simEngine::GaussianRandomizer(double sigma, double cutoff)
         x = cutoff * ( -1. + 2. * RAND_0_1 );
         /* Compute the Gaussian function of x. */
         double arg = - 0.5 * (x*x) /sigma/sigma;
-        yGauss = exp( arg );
+        yGauss = qExp( arg );
         /* Choose a random y from 0 to 1. */
 //        y = QRandomGenerator::global()->generateDouble();
         y = RAND_0_1;

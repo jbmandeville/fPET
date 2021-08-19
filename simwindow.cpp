@@ -117,7 +117,7 @@ void SimWindow::aboutROI()
 }
 void SimWindow::exitApp()
 {
-    exit(0);
+    QCoreApplication::exit(0);
 }
 
 void SimWindow::setThreadVisibility(bool state)
@@ -1056,12 +1056,14 @@ void SimWindow::clickedAnalyzeStimulation(bool state)
 {
     _calculateBPndCurves->setEnabled(state);
     _calculateTimeCurves->setEnabled(state);
+    _calculateTau4Curves->setEnabled(state);
     updateAllGraphs();
 }
 void SimWindow::clickedAnalyzeRealData(bool state)
 {
     _calculateBPndCurves->setEnabled(!state);
     _calculateTimeCurves->setEnabled(!state);
+    _calculateTau4Curves->setEnabled(!state);
     updateAllGraphs();
 }
 
@@ -1154,7 +1156,7 @@ void SimWindow::createSweepBPndPage()
     _checkBoxChallErrVsBPnd = new QCheckBox("Challenge error");
     _checkBoxTau2RefGraph  = new QCheckBox("1/k2' (=R1/k2)");
     _checkBoxk4ErrGraph    = new QCheckBox("1/k4");
-    _sigma2Label = new QLabel("0");
+    _sigma2Label = new QLabel("sigma2 = 0");
     _checkBoxBPndErrVsBPnd->setChecked(true);
     _checkBoxChallErrVsBPnd->setChecked(false);
     _checkBoxChallErrVsBPnd->setVisible(false);
@@ -1237,6 +1239,7 @@ void SimWindow::setReferenceRegionForAnalysis()
         dMatrix refRegion; refRegion.resize(1);
         timeBinsSec[0] = _dtBinsSec;          // _dataTable[nColums]
         refRegion[0] = _dataTable[_dataRefRegion->currentIndex()];  // getYData(iCurve)
+        _PETRTM.setSmoothingScale(0.1);  // xxx temporary
         _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
     else
@@ -2713,7 +2716,122 @@ void SimWindow::clearTau4Curves()
 }
 
 void SimWindow::calculateTau4Curves()
-{
+{  // sweep tau4 truth or tau4 analysis??
+    bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
+//    if ( noisy || _PETRTM.isForwardFitk4() )
+    if ( noisy )
+    {
+        calculateTau4CurvesInThreads();
+        return;
+    }
+
+    double saveTau4    = _PETRTM.getTau4(0); // tau4 will be changed, so save the value for later restoration
+    double saveTau2Ref = _PETRTM.getTau2RefFRTMInRun(0);
+    QString numberString;
+    int nTime = _simulator.getNumberTimeBinsCoarse();
+    dMatrix refRegion;      refRegion.resize(1);    refRegion[0].resize(nTime);
+    dMatrix tissueVector;   tissueVector.resize(1); tissueVector[0].resize(nTime);
+    dMatrix fitVector;      fitVector.resize(1);    fitVector[0].resize(nTime);
+
+    dVector xVector, errBPnd, errChall, AIC;
+    double sigma2Sum=0.;
+
+    double BP0 = _simulator.getBP0();
+
+    for (int jt=0; jt<nTime; jt++)
+        tissueVector[0][jt] = _simulator.getCtCoarse(jt);
+    _PETRTM.setTissueVector(tissueVector);
+
+    for (double tau4=0; tau4<=_tau4HighValue; tau4 += _tau4StepValue)
+    {
+        xVector.append(tau4);
+        _PETRTM.setTau4(0,tau4);
+//        _simulator.setTau4(tau4);  // set BP0 and run a series of samples
+
+        if ( _PETRTM.isRTM2() )
+        {
+            double bestSigma2 = 1.e20;  double bestTau2Ref = 0.;
+            for (double tau2Ref=0; tau2Ref<=2.*saveTau2Ref; tau2Ref += 0.05)
+            {
+                _PETRTM.setTau2RefFRTM(0,tau2Ref);
+                _PETRTM.prepare();
+                _PETRTM.fitData(tissueVector,fitVector);
+                double sigma2 = _PETRTM.getSimulationSigma2(0);
+                if ( sigma2 < bestSigma2 )
+                {
+                    bestSigma2 = sigma2;
+                    bestTau2Ref = tau2Ref;
+                }
+            }
+            _PETRTM.setTau2RefFRTM(0,bestTau2Ref);
+        }
+
+        _PETRTM.prepare();
+        _PETRTM.fitData(tissueVector,fitVector);
+
+        // get simulator AIC from _PETRM ("getAIC" returns GLM AIC, which is not the right one)
+        AIC.append(_PETRTM.getSimulationAIC(0));
+
+        if ( _PETRTM.isForwardModel() )
+            sigma2Sum += _PETRTM.getSimulationSigma2(0);
+        else
+            sigma2Sum += _PETRTM.getSigma2();
+
+        // update the BP error
+        double guess = _PETRTM.getBP0InRun(0);
+//        errBPnd.append(percentageError(guess,BP0));
+        errBPnd.append(guess-BP0);
+        // update the challenge error
+        double truth = _simulator.getChallengeMag();
+        guess = getChallengeMagFromAnalysis();
+        errChall.append(guess - truth);
+
+        /*
+        // update the 1/k4 error
+        if ( _PETRTM.isForwardFitk4() )
+        {
+            truth = _simulator.getTau4();
+            guess = _PETRTM.getTau4InRun(0);
+            FUNC_INFO << "** tau4 **" << truth << guess;
+            errTau4.append(percentageError(guess,truth));
+        }
+        */
+
+    } // loop over tau4 values
+    _PETRTM.setTau4(0,saveTau4);
+    _PETRTM.setTau2RefFRTM(0,saveTau2Ref);
+
+    sigma2Sum /= static_cast<double>(xVector.size());
+    _sigma2Label->setText(QString("sigma2 = %1").arg(sigma2Sum));
+
+    // restore the value of tau4
+    _tau4->setText(numberString.setNum(saveTau4));  changedBPND();
+
+    QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
+                         Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
+    int nCurves = _plotErrBPndVsTau4->getNumberCurves();
+    int iColor  = nCurves%10;
+
+    _plotErrBPndVsTau4->addCurve(0,"error_BPnd");
+    _plotErrBPndVsTau4->setPointSize(5);
+    _plotErrBPndVsTau4->setColor(colors[iColor]);
+    _plotErrBPndVsTau4->setData(xVector,errBPnd);
+    _plotErrBPndVsTau4->conclude(0,true);
+    _plotErrBPndVsTau4->plotDataAndFit(true);
+
+    _plotErrChallVsTau4->addCurve(0,"error_Challenge");
+    _plotErrChallVsTau4->setPointSize(5);
+    _plotErrChallVsTau4->setColor(colors[iColor]);
+    _plotErrChallVsTau4->setData(xVector,errChall);
+    _plotErrChallVsTau4->conclude(0,true);
+    _plotErrChallVsTau4->plotDataAndFit(true);
+
+    _plotAICVsTau4->addCurve(0,"AIC");
+    _plotAICVsTau4->setPointSize(5);
+    _plotAICVsTau4->setColor(colors[iColor]);
+    _plotAICVsTau4->setData(xVector,AIC);
+    _plotAICVsTau4->conclude(0,true);
+    _plotAICVsTau4->plotDataAndFit(true);
 }
 
 void SimWindow::calculateBPndCurves()
@@ -2726,7 +2844,6 @@ void SimWindow::calculateBPndCurves()
         return;
     }
 
-    bool calculateTau2Ref = !_PETRTM.isRTM2() || _checkBoxTau2RefGraph->isChecked();
     double saveBPnd = _simulator.getBP0(); // BPnd will be changed, so save the value for later restoration
     QString numberString;
     int nTime = _simulator.getNumberTimeBinsCoarse();
@@ -2761,12 +2878,13 @@ void SimWindow::calculateBPndCurves()
 
         // update the BP error
         double guess = _PETRTM.getBP0InRun(0);
-//        errBPnd.append(percentageError(guess,BP0));
-        errBPnd.append(guess-BP0);
+        errBPnd.append(percentageError(guess,BP0));
+//        errBPnd.append(guess-BP0);
         // update the challenge error
         double truth = _simulator.getChallengeMag();
         guess = getChallengeMagFromAnalysis();
         errChall.append(guess - truth);
+//        errChall.append(percentageError(guess,truth));
         // update the 1/k4 error
         if ( _PETRTM.isForwardFitk4() )
         {
@@ -2830,6 +2948,7 @@ void SimWindow::calculateBPndCurves()
 
     _plotErrBPndVsBPnd->setData(xVector,errBPnd);
     _plotErrChallVsBPnd->setData(xVector,errChall);
+    bool calculateTau2Ref = !_PETRTM.isRTM2() || _checkBoxTau2RefGraph->isChecked();
     if ( calculateTau2Ref )
         _plotTau2RefVsBPnd->setData(xVector,tau2Ref);
     if ( _PETRTM.getFitk4State() )
@@ -2977,6 +3096,30 @@ void SimWindow::calculateTimeCurves()
     _plotErrBPndOrChallVsTime->plotDataAndFit(true);
 }
 
+void SimWindow::calculateTau4CurvesInThreads()
+{
+    updateLieDetectorProgress(10*_nThreads);
+
+    _tau4Vector.clear();
+    for (double tau4=0; tau4<=_tau4HighValue; tau4 += _tau4StepValue)
+        _tau4Vector.append(tau4);
+    _errBPndMatrix.clear(); _errChallMatrix.clear();  _AICMatrix.clear();
+
+    /////////////////////////////////////////////////////////
+    // Create the average volume.
+    qRegisterMetaType<dVector>("dMatrix");
+    QVector<lieDetectorTau4 *> simSegment;
+    simSegment.resize(_nThreads);
+    for (int jThread=0; jThread<_nThreads; jThread++)
+    {
+        simSegment[jThread] = new lieDetectorTau4(_numberSimulationsPerThread, _tau4Vector, _simulator, _PETRTM);
+        connect(simSegment[jThread], SIGNAL(progressLieDetector(int)), this, SLOT(updateLieDetectorProgress(int)));
+        connect(simSegment[jThread], SIGNAL(finishedLieDetector(dMatrix,dMatrix,dMatrix,double)),
+                this,SLOT(finishedLieDetectorTau4OneThread(dMatrix,dMatrix,dMatrix,double)));
+        QThreadPool::globalInstance()->start(simSegment[jThread]);
+    }
+}
+
 void SimWindow::calculateBPndCurvesInThreads()
 {
     updateLieDetectorProgress(10*_nThreads);
@@ -2989,14 +3132,14 @@ void SimWindow::calculateBPndCurvesInThreads()
     /////////////////////////////////////////////////////////
     // Create the average volume.
     qRegisterMetaType<dVector>("dMatrix");
-    QVector<lieDetector *> simSegment;
+    QVector<lieDetectorBPnd *> simSegment;
     simSegment.resize(_nThreads);
     for (int jThread=0; jThread<_nThreads; jThread++)
     {
-        simSegment[jThread] = new lieDetector(_numberSimulationsPerThread, _BP0Vector, _simulator, _PETRTM);
-        connect(simSegment[jThread], SIGNAL(progressLieDetector(int)), this, SLOT(updateLieDetectorProgress(int)));
-        connect(simSegment[jThread], SIGNAL(finishedLieDetector(dMatrix,dMatrix,dMatrix,dMatrix,double)),
-                this,SLOT(finishedLieDetectorOneThread(dMatrix,dMatrix,dMatrix,dMatrix,double)));
+        simSegment[jThread] = new lieDetectorBPnd(_numberSimulationsPerThread, _BP0Vector, _simulator, _PETRTM);
+        connect(simSegment[jThread], SIGNAL(progresslieDetector(int)), this, SLOT(updateLieDetectorProgress(int)));
+        connect(simSegment[jThread], SIGNAL(finishedlieDetector(dMatrix,dMatrix,dMatrix,dMatrix,double)),
+                this,SLOT(finishedLieDetectorBPndOneThread(dMatrix,dMatrix,dMatrix,dMatrix,double)));
         QThreadPool::globalInstance()->start(simSegment[jThread]);
     }
 }
@@ -3016,15 +3159,15 @@ void SimWindow::updateLieDetectorProgress(int iProgress)
     }
 }
 
-void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall,
-                                             dMatrix tau2Ref, dMatrix errTau4,
-                                             double sigma2)
+void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errChall,
+                                                 dMatrix tau2Ref, dMatrix errTau4,
+                                                 double sigma2)
 {
     static int nThreadsFinished=0;
     static double sigma2Sum=0.;
 
     if ( errBPnd.size() != _BP0Vector.size() )
-        qFatal("Error: mismatched vector sizes in SimWindow::finishedLieDetectorOneThread");
+        qFatal("Error: mismatched vector sizes in SimWindow::finishedLieDetectorBPndOneThread");
 
     int nBP0Values = _BP0Vector.size();
     int nSamples   = errBPnd[0].size();
@@ -3036,15 +3179,15 @@ void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall,
         _errBPndMatrix.resize(nBP0Values); _errChallMatrix.resize(nBP0Values);
         _tau2RefMatrix.resize(nBP0Values); _errTau4Matrix.resize(nBP0Values);
     }
-    for (int jBP=0; jBP<nBP0Values; jBP++)
+    for (int jValue=0; jValue<nBP0Values; jValue++)
     {
-        FUNC_INFO << "** jBP errtau4" << jBP << errTau4[jBP][0];
+        FUNC_INFO << "** jValue errtau4" << jValue << errTau4[jValue][0];
         for ( int jSample=0; jSample<nSamples; jSample++)
         {
-            _errBPndMatrix[jBP].append(errBPnd[jBP][jSample]);
-            _errChallMatrix[jBP].append(errChall[jBP][jSample]);
-            _tau2RefMatrix[jBP].append(tau2Ref[jBP][jSample]);
-            _errTau4Matrix[jBP].append(errTau4[jBP][jSample]);
+            _errBPndMatrix[jValue].append(errBPnd[jValue][jSample]);
+            _errChallMatrix[jValue].append(errChall[jValue][jSample]);
+            _tau2RefMatrix[jValue].append(tau2Ref[jValue][jSample]);
+            _errTau4Matrix[jValue].append(errTau4[jValue][jSample]);
         }
     }
     mutex.unlock();
@@ -3059,7 +3202,50 @@ void SimWindow::finishedLieDetectorOneThread(dMatrix errBPnd, dMatrix errChall,
         _sigma2Label->setText(QString("sigma2 = %1").arg(sigma2Sum));
         nThreadsFinished = 0;  // reset for next time
         sigma2Sum = 0.;
-        finishedLieDetectorAllThreads();
+        finishedLieDetectorBPndAllThreads();
+    }
+}
+
+void SimWindow::finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errChall, dMatrix AIC, double sigma2)
+{
+    static int nThreadsFinished=0;
+    static double sigma2Sum=0.;
+
+    if ( errBPnd.size() != _tau4Vector.size() )
+        qFatal("Error: mismatched vector sizes in SimWindow::finishedLieDetectorTau4OneThread");
+
+    int nTau4Values = _tau4Vector.size();
+    int nSamples    = errBPnd[0].size();
+
+    QMutex mutex;
+    mutex.lock();
+    if ( _errBPndMatrix.size() == 0 )
+    {
+        _errBPndMatrix.resize(nTau4Values); _errChallMatrix.resize(nTau4Values);
+        _AICMatrix.resize(nTau4Values);
+    }
+    for (int jValue=0; jValue<nTau4Values; jValue++)
+    {
+        for ( int jSample=0; jSample<nSamples; jSample++)
+        {
+            _errBPndMatrix[jValue].append(errBPnd[jValue][jSample]);
+            _errChallMatrix[jValue].append(errChall[jValue][jSample]);
+            _AICMatrix[jValue].append(AIC[jValue][jSample]);
+        }
+    }
+    mutex.unlock();
+
+    nThreadsFinished++;
+    sigma2Sum += sigma2;
+    if ( nThreadsFinished == _nThreads )
+    {
+        _progressBar->reset();
+        _progressBar->setMaximum(1);  // indicates that the bar is available
+        sigma2Sum /= static_cast<double>(_nThreads);
+        _sigma2Label->setText(QString("sigma2 = %1").arg(sigma2Sum));
+        nThreadsFinished = 0;  // reset for next time
+        sigma2Sum = 0.;
+        finishedLieDetectorTau4AllThreads();
     }
 }
 
@@ -3081,7 +3267,7 @@ double SimWindow::calculateStDev(double mean, dVector vec)
     return stdev;
 }
 
-void SimWindow::finishedLieDetectorAllThreads()
+void SimWindow::finishedLieDetectorBPndAllThreads()
 {
     int nBP0Values = _BP0Vector.size();
     int nSamples   = _nThreads * _numberSimulationsPerThread;
@@ -3090,19 +3276,19 @@ void SimWindow::finishedLieDetectorAllThreads()
 
     dVector errBP, errChall, tau2Ref, errTau4, errBPSEM, errChallSEM, tau2RefSEM, errTau4SEM;
     // determine the means
-    for (int jBP=0; jBP<nBP0Values; jBP++)
+    for (int jValue=0; jValue<nBP0Values; jValue++)
     {
-        FUNC_INFO << "** errTau4Matrix" << _errTau4Matrix[jBP];
+        FUNC_INFO << "** errTau4Matrix" << _errTau4Matrix[jValue];
 
-        errBP.append(calculateMean(_errBPndMatrix[jBP]));
-        errChall.append(calculateMean(_errChallMatrix[jBP]));
-        tau2Ref.append(calculateMean(_tau2RefMatrix[jBP]));
-        errTau4.append(calculateMean(_errTau4Matrix[jBP]));
+        errBP.append(calculateMean(_errBPndMatrix[jValue]));
+        errChall.append(calculateMean(_errChallMatrix[jValue]));
+        tau2Ref.append(calculateMean(_tau2RefMatrix[jValue]));
+        errTau4.append(calculateMean(_errTau4Matrix[jValue]));
 
-        errBPSEM.append(calculateStDev(errBP[jBP],       _errBPndMatrix[jBP])  / qSqrt(nSamples));
-        errChallSEM.append(calculateStDev(errChall[jBP], _errChallMatrix[jBP]) / qSqrt(nSamples));
-        tau2RefSEM.append(calculateStDev(tau2Ref[jBP],   _tau2RefMatrix[jBP])  / qSqrt(nSamples));
-        errTau4SEM.append(calculateStDev(errTau4[jBP],   _errTau4Matrix[jBP])  / qSqrt(nSamples));
+        errBPSEM.append(calculateStDev(errBP[jValue],       _errBPndMatrix[jValue])  / qSqrt(nSamples));
+        errChallSEM.append(calculateStDev(errChall[jValue], _errChallMatrix[jValue]) / qSqrt(nSamples));
+        tau2RefSEM.append(calculateStDev(tau2Ref[jValue],   _tau2RefMatrix[jValue])  / qSqrt(nSamples));
+        errTau4SEM.append(calculateStDev(errTau4[jValue],   _errTau4Matrix[jValue])  / qSqrt(nSamples));
     }
 
     // restore the value of BPnd in simulator, plus regenerate graphs
@@ -3157,6 +3343,70 @@ void SimWindow::finishedLieDetectorAllThreads()
     _plotErrChallVsBPnd->plotDataAndFit(true);
     _plotTau2RefVsBPnd->plotDataAndFit(true);
     _plotErrk4VsBPnd->plotDataAndFit(true);
+
+    _progressBar->reset();
+}
+
+void SimWindow::finishedLieDetectorTau4AllThreads()
+{
+    int nTau4Values = _tau4Vector.size();
+    int nSamples    = _nThreads * _numberSimulationsPerThread;
+
+    FUNC_INFO << "nSamples" << nSamples;
+
+    dVector errBP, errChall, AIC, errBPSEM, errChallSEM, AICSEM;
+    // determine the means
+    for (int jValue=0; jValue<nTau4Values; jValue++)
+    {
+        FUNC_INFO << "** errTau4Matrix" << _errTau4Matrix[jValue];
+
+        errBP.append(calculateMean(_errBPndMatrix[jValue]));
+        errChall.append(calculateMean(_errChallMatrix[jValue]));
+        AIC.append(calculateMean(_AICMatrix[jValue]));
+
+        errBPSEM.append(calculateStDev(errBP[jValue],       _errBPndMatrix[jValue])  / qSqrt(nSamples));
+        errChallSEM.append(calculateStDev(errChall[jValue], _errChallMatrix[jValue]) / qSqrt(nSamples));
+        AICSEM.append(calculateStDev(AIC[jValue],           _AICMatrix[jValue])      / qSqrt(nSamples));
+    }
+
+    // restore the value of BPnd in simulator, plus regenerate graphs
+    changedBPND();  // this will use the value saved in the text field of _BPnd, which should have changed during the simulation
+
+    QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
+                         Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
+    int nCurves = _plotErrBPndVsBPnd->getNumberCurves();
+    int iColor  = nCurves%10;
+
+    _plotErrBPndVsTau4->addCurve(0,"error_BPnd");
+    _plotErrBPndVsTau4->setPointSize(5);
+    _plotErrBPndVsTau4->setColor(colors[iColor]);
+    _plotErrBPndVsTau4->setErrorBars(1);
+
+    _plotErrChallVsTau4->addCurve(0,"error_Challenge");
+    _plotErrChallVsTau4->setPointSize(5);
+    _plotErrChallVsTau4->setColor(colors[iColor]);
+    _plotErrChallVsTau4->setErrorBars(1);
+
+    _plotAICVsTau4->addCurve(0,"AIC");
+    _plotAICVsTau4->setPointSize(5);
+    _plotAICVsTau4->setColor(colors[iColor]);
+    _plotAICVsTau4->setErrorBars(1);
+
+    dVector xVector;
+    for (double tau4=0; tau4<=_tau4HighValue; tau4 += _tau4StepValue)
+        xVector.append(tau4);
+
+    _plotErrBPndVsTau4->setData(_tau4Vector,errBP,errBPSEM);
+    _plotErrChallVsTau4->setData(_tau4Vector,errChall,errChallSEM);
+    _plotAICVsTau4->setData(_tau4Vector,AIC,AICSEM);
+
+    _plotErrBPndVsTau4->conclude(0,true);
+    _plotErrChallVsTau4->conclude(0,true);
+    _plotAICVsTau4->conclude(0,true);
+
+    _plotErrBPndVsTau4->plotDataAndFit(true);
+    _plotErrChallVsTau4->plotDataAndFit(true);
+    _plotAICVsTau4->plotDataAndFit(true);
 
     _progressBar->reset();
 }

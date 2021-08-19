@@ -34,7 +34,7 @@ private:
     RTMModelTypes _modelRTM=RTM_SRTM3;
     int _PETWeightingModel=Weights_Uniform;
     double _tau4Nominal=10.;
-    double _smoothingScale=0.5;  // can be minutes, but generally use sliding kernel = 0.5 * time, so scale is a time fraction
+    double _smoothingScale=0.01;  // can be minutes, but generally use sliding kernel = 0.5 * time, so scale is a time fraction
     bool _dCrdtIncluded=false;
     bool _referenceRegionIsDefined=false;
     QString _petConditionsFromTimeModelFile; // a copy to be applied when the time model is read completely (so it won't be trimmed by incomplete info)
