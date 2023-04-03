@@ -9,6 +9,7 @@
 
 SimWindow::SimWindow()
 {
+    FUNC_ENTER;
     _threadsComboBox = new QComboBox();
     int maxThreads = QThread::idealThreadCount();
     for (int jThread=0; jThread<maxThreads; jThread++)
@@ -86,6 +87,7 @@ SimWindow::SimWindow()
 
 void SimWindow::aboutApp()
 {
+    FUNC_ENTER;
     QMessageBox msgBox;
     QString version = qVersion();
     QString text = "Qt Version " + version;
@@ -100,6 +102,7 @@ void SimWindow::aboutApp()
 }
 void SimWindow::aboutROI()
 {
+    FUNC_ENTER;
     QMessageBox msgBox;
     QString ROIFile = "ROI file format (use extension .dat, .roi, .list, or .table)\n\n";
     ROIFile += "label1 label2 label3 ...\n";
@@ -117,11 +120,13 @@ void SimWindow::aboutROI()
 }
 void SimWindow::exitApp()
 {
+    FUNC_ENTER;
     QCoreApplication::exit(0);
 }
 
 void SimWindow::setThreadVisibility(bool state)
 {
+    FUNC_ENTER;
     _threadsComboBox->setVisible(state);
     _nSamplesBPndPerThreadLabel->setVisible(state);
     _nSamplesBPndPerThread->setVisible(state);
@@ -131,6 +136,7 @@ void SimWindow::setThreadVisibility(bool state)
 
 void SimWindow::getTableDataFile()
 {
+    FUNC_ENTER;
     QString fileName;
     QFileDialog fileDialog;
 
@@ -213,6 +219,7 @@ void SimWindow::getTableDataFile()
 
 bool SimWindow::defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn)
 { // read time bin sizes
+    FUNC_ENTER;
     // Find bin sizes
     iColumn = -1;
     for (int jName=0; jName<validBinName.count(); jName++)
@@ -238,6 +245,7 @@ bool SimWindow::defineTimeBinsFromBinSize(QStringList validBinName, int &iColumn
 
 bool SimWindow::defineTimeBinsFromTimePoints(QStringList validBinName, int &iColumn)
 { // convert time (MINUTES) to dt (SECONDS)
+    FUNC_ENTER;
     // Find bin sizes
     iColumn = -1;
     for (int jName=0; jName<validBinName.count(); jName++)
@@ -269,6 +277,7 @@ bool SimWindow::defineTimeBinsFromTimePoints(QStringList validBinName, int &iCol
 
 void SimWindow::enablePlasmaMatching(bool state)
 {
+    FUNC_ENTER;
     _calcRRMatch->setEnabled(state);
     _bolusMagCheckBox->setVisible(state);
     _tauDecayCheckBox->setVisible(state);
@@ -280,6 +289,7 @@ void SimWindow::enablePlasmaMatching(bool state)
 
 void SimWindow::createSetupPage()
 {
+    FUNC_ENTER;
     _setupPage = new QWidget();
 
     _plotPlasma = new plotData(0);
@@ -640,6 +650,7 @@ void SimWindow::changedSimulationStartingPoint()
 
 void SimWindow::enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool enable)
 {
+    FUNC_ENTER;
     QStandardItemModel* model = qobject_cast<QStandardItemModel*>(comboBox->model());
     QStandardItem* item= model->item(itemNumber);
     int nItems = comboBox->count();
@@ -662,6 +673,7 @@ void SimWindow::enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool ena
 }
 void SimWindow::calculateRRMatch()
 {
+    FUNC_ENTER;
     bVector includeParameter;
     includeParameter.append(_bolusMagCheckBox->checkState());
     includeParameter.append(_tauDecayCheckBox->checkState());
@@ -674,6 +686,7 @@ void SimWindow::calculateRRMatch()
 
 void SimWindow::changedWeightType(int indexInBox)
 {
+    FUNC_ENTER;
     _PETRTM.setWeightingModel(indexInBox);
     _PETRTM.setPrepared(false);
     updateAllGraphs();
@@ -681,24 +694,8 @@ void SimWindow::changedWeightType(int indexInBox)
 
 void SimWindow::changedModelType(int indexInBox)
 {
-    if ( indexInBox == RTM_SRTM3 )
-        _PETRTM.setRTMModelType("SRTM3");
-    else if ( indexInBox == RTM_SRTM2 )
-        _PETRTM.setRTMModelType("SRTM2");
-    else if ( indexInBox == RTM_rFRTM3 )
-        _PETRTM.setRTMModelType("rFRTM3");
-    else if ( indexInBox == RTM_rFRTM2 )
-        _PETRTM.setRTMModelType("rFRTM2");
-    else if ( indexInBox == RTM_SRTM2Fit )
-        _PETRTM.setRTMModelType("SRTM2Fit");
-    else if ( indexInBox == RTM_rFRTM3New )
-        _PETRTM.setRTMModelType("rFRTM3New");
-    else if ( indexInBox == RTM_rFRTM2New )
-        _PETRTM.setRTMModelType("rFRTM2New");
-    else if ( indexInBox == RTM_fmFRTM3 )
-        _PETRTM.setRTMModelType("fmFRTM3");
-    else if ( indexInBox == RTM_fmFRTM2 )
-        _PETRTM.setRTMModelType("fmFRTM2");
+    FUNC_ENTER;
+    _PETRTM.setRTMModelType(indexInBox);
 
     _tabTimeSpace->setTabEnabled(4,_PETRTM.isForwardModel());  // only enable with k4 (not SRTM)
 
@@ -726,12 +723,13 @@ void SimWindow::changedModelType(int indexInBox)
         _checkBoxTau2RefGraph->setVisible(true);
         _checkBoxTau2RefGraph->setText("1/k2' (=R1/k2)");
     }
-    _tau4AnalysisLabel->setVisible( _PETRTM.isFRTM() || _PETRTM.isForwardModel() );
-    _tau4Analysis->setVisible(      _PETRTM.isFRTM() || _PETRTM.isForwardModel() );
+    _tau4AnalysisLabel->setVisible( _PETRTM.isForwardModel() );
+    _tau4Analysis->setVisible(      _PETRTM.isForwardModel() );
 }
 
 void SimWindow::createTargetPage()
 {
+    FUNC_ENTER;
     _targetPage = new QWidget();
 
     _plotBasis  = new plotData(2);
@@ -764,6 +762,7 @@ void SimWindow::createTargetPage()
     QLabel *BPndLabel    = new QLabel("BPnd");
     QLabel *R1Label      = new QLabel("R1");
     QLabel *tau4Label    = new QLabel("1/k4 (min)");
+    QLabel *DVLabel      = new QLabel("DV");
     QLabel *challengeTimeLabel = new QLabel("Challenge time");
     QChar delta = QChar(0x0394);
     QLabel *challengeMagLabel  = new QLabel(QString("%1BPnd (%)").arg(delta));
@@ -772,6 +771,7 @@ void SimWindow::createTargetPage()
     _BPnd          = new QLineEdit();
     _R1            = new QLineEdit();
     _tau4          = new QLineEdit();
+    _DV            = new QLineEdit();
     _challengeTime = new QLineEdit();
     _challengeMag  = new QLineEdit();
     _plasmaFracTar = new QLineEdit();
@@ -779,6 +779,7 @@ void SimWindow::createTargetPage()
     _BPnd->setText(numberString.setNum(_simulator.getBP0()));
     _R1->setText(numberString.setNum(_simulator.getR1()));
     _tau4->setText(numberString.setNum(_simulator.getTau4()));
+    _DV->setText(numberString.setNum(_simulator.getDV()));
     _challengeTime->setText(numberString.setNum(_simulator.getChallengeTime()));
     _challengeMag->setText(numberString.setNum(_simulator.getChallengeMag()));
     _noiseTar->setText(numberString.setNum(_simulator.getNoiseTar()));
@@ -786,6 +787,7 @@ void SimWindow::createTargetPage()
     _BPnd->setFixedWidth(editTextSize);
     _R1->setFixedWidth(editTextSize);
     _tau4->setFixedWidth(editTextSize);
+    _DV->setFixedWidth(editTextSize);
     _challengeTime->setFixedWidth(editTextSize);
     _challengeMag->setFixedWidth(editTextSize);
     _noiseTar->setFixedWidth(editTextSize);
@@ -797,19 +799,22 @@ void SimWindow::createTargetPage()
     targetSimulationLayout->addWidget(_R1,1,1);
     targetSimulationLayout->addWidget(tau4Label,2,0);
     targetSimulationLayout->addWidget(_tau4,2,1);
-    targetSimulationLayout->addWidget(challengeTimeLabel,3,0);
-    targetSimulationLayout->addWidget(_challengeTime,3,1);
-    targetSimulationLayout->addWidget(challengeMagLabel,4,0);
-    targetSimulationLayout->addWidget(_challengeMag,4,1);
-    targetSimulationLayout->addWidget(plasmaFraclabel,5,0);
-    targetSimulationLayout->addWidget(_plasmaFracTar,5,1);
-    targetSimulationLayout->addWidget(noiseLabel,6,0);
-    targetSimulationLayout->addWidget(_noiseTar,6,1);
+    targetSimulationLayout->addWidget(DVLabel,3,0);
+    targetSimulationLayout->addWidget(_DV,3,1);
+    targetSimulationLayout->addWidget(challengeTimeLabel,4,0);
+    targetSimulationLayout->addWidget(_challengeTime,4,1);
+    targetSimulationLayout->addWidget(challengeMagLabel,5,0);
+    targetSimulationLayout->addWidget(_challengeMag,5,1);
+    targetSimulationLayout->addWidget(plasmaFraclabel,6,0);
+    targetSimulationLayout->addWidget(_plasmaFracTar,6,1);
+    targetSimulationLayout->addWidget(noiseLabel,7,0);
+    targetSimulationLayout->addWidget(_noiseTar,7,1);
     _targetSimulationGroupBox->setLayout(targetSimulationLayout);
     targetSimulationLayout->setSpacing(0);
     connect(_BPnd,          SIGNAL(editingFinished()), this, SLOT(changedBPND()));
     connect(_R1,            SIGNAL(editingFinished()), this, SLOT(changedR1()));
     connect(_tau4,          SIGNAL(editingFinished()), this, SLOT(changedTau4()));
+    connect(_DV,            SIGNAL(editingFinished()), this, SLOT(changedDV()));
     connect(_challengeTime, SIGNAL(editingFinished()), this, SLOT(changedChallengeTime()));
     connect(_challengeMag,  SIGNAL(editingFinished()), this, SLOT(changedChallengeMag()));
     connect(_plasmaFracTar, SIGNAL(editingFinished()), this, SLOT(changedPlasmaFracTar()));
@@ -837,12 +842,10 @@ void SimWindow::createTargetPage()
     _modelType->addItem("SRTM3");
     _modelType->addItem("SRTM2");
     _modelType->addItem("SRTM2Fit");
-    _modelType->addItem("rFRTM3");
-    _modelType->addItem("rFRTM2");
-    _modelType->addItem("rFRTM3New");
-    _modelType->addItem("rFRTM2New");
-    _modelType->addItem("fmFRTM3");
-    _modelType->addItem("fmFRTM2");
+    _modelType->addItem("fFRTM");
+    _modelType->addItem("fFRTM+k4");
+    _modelType->addItem("fFRTM+DV");
+    _modelType->addItem("fFRTM+k2Ref");
     enableComboBoxItem(_modelType,2,false);
 //    enableComboBoxItem(_modelType,5,false);  // xxx tmp
 //    enableComboBoxItem(_modelType,6,false);  // xxx tmp
@@ -897,8 +900,6 @@ void SimWindow::createTargetPage()
     auto *errorGroupBox = new QGroupBox("Target Region: Percentage Errors");
     QLabel *errorBPndLabel  = new QLabel("BPnd ");
     QLabel *errork2Label    = new QLabel("k2   ");
-    QLabel *errork2aLabel   = new QLabel("k2a  ");
-    _errordk2aLabel         = new QLabel("dk2a ");
     _errorR1Label           = new QLabel("R1   ");
     _errorTau2RefLabel      = new QLabel("1/k2'");
     _errorChallengeLabel    = new QLabel("Challenge");
@@ -906,8 +907,6 @@ void SimWindow::createTargetPage()
     _sigmaLabel             = new QLabel("sigma");
     _errorBPnd      = new QLabel();
     _errork2        = new QLabel();
-    _errork2a       = new QLabel();
-    _errordk2a      = new QLabel();
     _errorR1        = new QLabel();
     _errorTau2Ref   = new QLabel();
     _errorChallenge = new QLabel();
@@ -917,27 +916,21 @@ void SimWindow::createTargetPage()
     _errorChallenge->setVisible(false);
     _errork4Label->setVisible(false);
     _errork4->setVisible(false);
-    _errordk2a->setVisible(false);
-    _errordk2aLabel->setVisible(false);
     auto *errorLayout = new QGridLayout();
     errorLayout->addWidget(errorBPndLabel,0,0);
     errorLayout->addWidget(_errorBPnd,0,1);
     errorLayout->addWidget(errork2Label,1,0);
     errorLayout->addWidget(_errork2,1,1);
-    errorLayout->addWidget(errork2aLabel,2,0);
-    errorLayout->addWidget(_errork2a,2,1);
-    errorLayout->addWidget(_errordk2aLabel,3,0);
-    errorLayout->addWidget(_errordk2a,3,1);
-    errorLayout->addWidget(_errorR1Label,4,0);
-    errorLayout->addWidget(_errorR1,4,1);
-    errorLayout->addWidget(_errorTau2RefLabel,5,0);
-    errorLayout->addWidget(_errorTau2Ref,5,1);
-    errorLayout->addWidget(_errorChallengeLabel,6,0);
-    errorLayout->addWidget(_errorChallenge,6,1);
-    errorLayout->addWidget(_errork4Label,7,0);
-    errorLayout->addWidget(_errork4,7,1);
-    errorLayout->addWidget(_sigmaLabel,8,0);
-    errorLayout->addWidget(_sigma,8,1);
+    errorLayout->addWidget(_errorR1Label,2,0);
+    errorLayout->addWidget(_errorR1,2,1);
+    errorLayout->addWidget(_errorTau2RefLabel,3,0);
+    errorLayout->addWidget(_errorTau2Ref,3,1);
+    errorLayout->addWidget(_errorChallengeLabel,4,0);
+    errorLayout->addWidget(_errorChallenge,4,1);
+    errorLayout->addWidget(_errork4Label,5,0);
+    errorLayout->addWidget(_errork4,5,1);
+    errorLayout->addWidget(_sigmaLabel,6,0);
+    errorLayout->addWidget(_sigma,6,1);
     errorGroupBox->setLayout(errorLayout);
     errorLayout->setSpacing(0);
 
@@ -1054,6 +1047,7 @@ void SimWindow::createTargetPage()
 
 void SimWindow::clickedAnalyzeStimulation(bool state)
 {
+    FUNC_ENTER;
     _calculateBPndCurves->setEnabled(state);
     _calculateTimeCurves->setEnabled(state);
     _calculateTau4Curves->setEnabled(state);
@@ -1061,6 +1055,7 @@ void SimWindow::clickedAnalyzeStimulation(bool state)
 }
 void SimWindow::clickedAnalyzeRealData(bool state)
 {
+    FUNC_ENTER;
     _calculateBPndCurves->setEnabled(!state);
     _calculateTimeCurves->setEnabled(!state);
     _calculateTau4Curves->setEnabled(!state);
@@ -1069,6 +1064,7 @@ void SimWindow::clickedAnalyzeRealData(bool state)
 
 void SimWindow::createSweepBPndPage()
 {
+    FUNC_ENTER;
     // For RTM3:
     // 1) BPnd_err vs. BPnd
     // 2) Challenge error vs. BPnd
@@ -1230,6 +1226,7 @@ void SimWindow::createSweepBPndPage()
 
 void SimWindow::setReferenceRegionForAnalysis()
 { // xxx this needs modification
+    FUNC_ENTER;
     if ( analyzeRealData() )
     {
         FUNC_INFO << "defineRTMModel real data";
@@ -1266,6 +1263,7 @@ void SimWindow::setReferenceRegionForAnalysis()
 
 void SimWindow::createSweepTau4Page()
 {
+    FUNC_ENTER;
     // 1) BPnd_err vs. time
     // 2) Challenge error vs. time
 
@@ -1391,6 +1389,7 @@ void SimWindow::createSweepTau4Page()
 
 void SimWindow::createSweepTimePage()
 {
+    FUNC_ENTER;
     // 1) BPnd_err vs. time
     // 2) Challenge error vs. time
 
@@ -1487,6 +1486,7 @@ void SimWindow::createSweepTimePage()
 
 void SimWindow::showPlasma()
 {
+    FUNC_ENTER;
     _plotPlasma->getPlotSurface()->setVisible(true);
     _plasmaStatusBar->setVisible(true);
     _plotRR->getPlotSurface()->setVisible(false);
@@ -1496,6 +1496,7 @@ void SimWindow::showPlasma()
 }
 void SimWindow::showRR()
 {
+    FUNC_ENTER;
     _plotPlasma->getPlotSurface()->setVisible(false);
     _plasmaStatusBar->setVisible(false);
     _plotRR->getPlotSurface()->setVisible(true);
@@ -1505,22 +1506,26 @@ void SimWindow::showRR()
 }
 void SimWindow::showBasisTarget()
 {
+    FUNC_ENTER;
     _plotBasis->getPlotSurface()->setVisible(true);
     _plotTarget->getPlotSurface()->setVisible(true);
 }
 void SimWindow::showBasis()
 {
+    FUNC_ENTER;
     _plotBasis->getPlotSurface()->setVisible(true);
     _plotTarget->getPlotSurface()->setVisible(false);
 }
 void SimWindow::showTarget()
 {
+    FUNC_ENTER;
     _plotBasis->getPlotSurface()->setVisible(false);
     _plotTarget->getPlotSurface()->setVisible(true);
     updateAllGraphs();
 }
 void SimWindow::showAICvsTau4()
 {
+    FUNC_ENTER;
     _plotBasis->getPlotSurface()->setVisible(false);
     _plotTarget->getPlotSurface()->setVisible(true);
     updateAICvsTau4Graph();
@@ -1648,6 +1653,7 @@ void SimWindow::addSimulationRR(plotData *whichPlot)
 }
 void SimWindow::addFitRR(plotData *whichPlot)
 {
+    FUNC_ENTER;
     whichPlot->addCurve(0,"RR: fit");
     if ( whichPlot->getNumberCurves() == 1 )
         whichPlot->setColor(Qt::red); // 1st curve is red
@@ -1666,6 +1672,7 @@ void SimWindow::addFitRR(plotData *whichPlot)
 }
 void SimWindow::addDataCurveRR(plotData *whichPlot)
 {
+    FUNC_ENTER;
     if ( !realDataAvailable() ) return;
     int indexInBox = _dataRefRegion->currentIndex();
     if ( indexInBox >= _dataTable.size() )
@@ -1716,7 +1723,7 @@ void SimWindow::addSimulationTarget()
     bVector ignorePoint;
     for (int jt=0; jt<nTime; jt++) // loop over ALL points
     {
-        if ( ! _PETRTM.getWeight(jt) != 0. )
+        if ( !(_PETRTM.getWeight(jt) != 0.) )
         {
             xDataIgnore.append(xTime[jt]);
             yDataIgnore.append(yTAC[jt]);
@@ -1729,6 +1736,7 @@ void SimWindow::addSimulationTarget()
 }
 void SimWindow::addDataCurveTarget()
 {
+    FUNC_ENTER;
     if ( realDataAvailable() )
     {
         _plotTarget->addCurve(0,"target: ROI data");
@@ -1793,29 +1801,6 @@ void SimWindow::updateTargetGraph()
         yTAC[jt] = _PETRTM.getReferenceRegion(false,0,jt).y;
     _plotTarget->setData(xTime,yTAC);
 
-    // add FRTM convolution
-    if ( _PETRTM.isFRTM() )
-    {
-        if ( _PETRTM.isFRTMNew() )
-//            _plotTarget->addCurve(0,"BP0*convolution");
-            _plotTarget->addCurve(0,"convolution");
-        else
-            _plotTarget->addCurve(0,"convolution");
-        _plotTarget->setColor(Qt::magenta);
-        for (int jt=0; jt<nTime; jt++)
-            yTAC[jt]  = _simulator.getBP0() * _PETRTM.getFRTMConvolution(0,jt);
-//            yTAC[jt]  = _PETRTM.getFRTMConvolution(0,jt);
-        _plotTarget->setData(xTime,yTAC);
-    }
-    if ( _PETRTM.isFRTMNew() )
-    {
-        _plotTarget->addCurve(0,"Ct-Cr");
-        _plotTarget->setColor(Qt::cyan);
-        for (int jt=0; jt<nTime; jt++)
-            yTAC[jt]  = _PETRTM.getCtMinusCr(0,jt);
-        _plotTarget->setData(xTime,yTAC);
-    }
-
     _plotTarget->conclude(0,true);
     _plotTarget->plotDataAndFit(true);
     FUNC_EXIT;
@@ -1823,6 +1808,7 @@ void SimWindow::updateTargetGraph()
 
 void SimWindow::defineRTMModel()
 {
+    FUNC_ENTER;
     static int firstTime=true;
     setReferenceRegionForAnalysis();
     if ( firstTime )
@@ -1845,21 +1831,19 @@ void SimWindow::defineRTMModel()
 
 void SimWindow::updateBasisGraph()
 {
+    FUNC_ENTER;
     _plotBasis->init();
     _plotBasis->setLegendOn(true);
 
     _plotBasis->addCurve(0,"weights");
     _plotBasis->setPointSize(3);
-    double averageY=0;
     dVector xData;  xData.clear();
     dVector yData;  yData.clear();
     for (int jt=0; jt<_PETRTM.getNumberTimePoints(); jt++)
     {
         xData.append(jt);
         yData.append(_PETRTM.getWeight(jt));
-        averageY += _PETRTM.getWeight(jt);
     }
-    averageY /= static_cast<double>(_PETRTM.getNumberTimePoints());
     _plotBasis->setData(xData, yData);
 
     int nBasis = _PETRTM.getNumberCoefficients();
@@ -1905,10 +1889,10 @@ void SimWindow::updateBasisGraph()
             double targetMax = _plotBasis->getMaxYAbs(targetCurve);
             if ( targetMax != 0. && sourceMax != 0. )
             {
-                _plotBasis->_yAxis2Ratio = sourceMax / targetMax;
-                _plotBasis->_listOfCurves[0].scaleFactor = 1. / _plotBasis->_yAxis2Ratio;
+                _plotBasis->setYAxisRatio(sourceMax / targetMax);
+                _plotBasis->setScaleFactorY(0,1. / _plotBasis->getYAxisRatio());
                 for (int jt=0; jt<_PETRTM.getNumberTimePoints(); jt++)
-                    _plotBasis->_listOfCurves[0].yData[jt] /= _plotBasis->_yAxis2Ratio;
+                    _plotBasis->_listOfCurves[0].yData[jt] /= _plotBasis->getYAxisRatio();
             }
         }
     }
@@ -1919,24 +1903,25 @@ void SimWindow::updateBasisGraph()
 
 void SimWindow::updateAICvsTau4Graph()
 {
+    FUNC_ENTER;
     dVector tau4Vector, AICVector, tau2RefVector;
     tau4Vector.clear();  AICVector.clear();  tau2RefVector.clear();
     bool ok;  double bestTau4 = _tau4Analysis->text().toDouble(&ok);
     if ( bestTau4 < 10. ) bestTau4 = 10.;
-    if ( _PETRTM.isRTM3() && !_PETRTM.getFitk4State() )
+    if ( _PETRTM.isRTM3() && !_PETRTM.getFitk4() )
     {
         double bestTau2Ref;
         _PETRTM.calculateTau4andTau2Ref(0,AICVector, tau4Vector, tau2RefVector, bestTau4, bestTau2Ref);
         _tau4Analysis->setText(QString::number(bestTau4,'g',3));
         _tau2RefAnalysis->setText(QString::number(bestTau2Ref));
     }
-    else if ( !_PETRTM.getFitk4State() )
+    else if ( !_PETRTM.getFitk4() )
     {
-        _PETRTM.calculateTau4atFixedTau2Ref(0,AICVector, tau4Vector, bestTau4);
+        _PETRTM.calculateForwardModelValueByLineScan(0,0, AICVector, tau4Vector, bestTau4);
         _tau4Analysis->setText(QString::number(bestTau4,'g',3));
     }
     if ( isnan(bestTau4) ) bestTau4 = 10.;
-    _PETRTM.setTau4Nominal(bestTau4);
+    _PETRTM._simulator[0].setTau4(bestTau4);
 
     _plotTarget->init();
     _plotTarget->setLegendOn(false);
@@ -1949,6 +1934,7 @@ void SimWindow::updateAICvsTau4Graph()
 
 void SimWindow::updateAllGraphs()
 {
+    FUNC_ENTER;
     // run the simulation
     _simulator.run();
 
@@ -1970,6 +1956,7 @@ void SimWindow::updateAllGraphs()
 }
 void SimWindow::analyzeTAC()
 {
+    FUNC_ENTER;
     // define analysis
     defineRTMModel();
     // update the RTM model
@@ -1989,7 +1976,7 @@ void SimWindow::analyzeTAC()
         for (int jt=0; jt<nTime; jt++)
             tissueVector[0][jt] = _simulator.getCtCoarse(jt);
     }
-    _PETRTM.setTissueVector(tissueVector);
+    _PETRTM.setTissueRegion(tissueVector);
     _PETRTM.definePETConditions("a c"); // don't define R1, which is not valid for RTM2
     _PETRTM.prepare();
     dMatrix fitVector;     fitVector.resize(1);     fitVector[0].resize(nTime);
@@ -1997,39 +1984,12 @@ void SimWindow::analyzeTAC()
 
     // BPnd
     double truth = _simulator.getBP0();
-    double guess = _PETRTM.getBP0InRun(0);
+    double guess = _PETRTM.getBP0InRun(0).x;
     _errorBPnd->setText(analyzeString(truth,guess));
     // k2
     truth = _simulator.getk2();
     guess = _PETRTM.getk2InRun(0).x;
     _errork2->setText(analyzeString(truth,guess));
-    // k2a
-    if ( _PETRTM.isFRTMNew() )
-    { // get the "k2a" parameter, which really is k4 * k2 * BPND
-        double k2 = _simulator.getk2();
-        double BP0 = _simulator.getBP0();
-        truth = k2 * BP0;
-    }
-    else
-        truth = _simulator.getk2a();
-    guess = _PETRTM.getk2aInRun(0).x;
-    _errork2a->setText(analyzeString(truth,guess));
-    QString valueString;
-    if ( _fitChallenge->isChecked() )
-    {
-        if ( _PETRTM.isFRTMNew() )
-        { // dk2k3
-            truth = _simulator.getdk2k3();
-            guess = _PETRTM.getdk2aInRun('c').x;
-            _errordk2a->setText(analyzeString(truth,guess));
-        }
-        else
-        { // dka2
-            truth = _simulator.getdk2a();
-            guess = _PETRTM.getdk2aInRun('c').x;
-            _errordk2a->setText(analyzeString(truth,guess));
-        }
-    }
 
     // R1
     truth = _simulator.getR1();
@@ -2039,7 +1999,6 @@ void SimWindow::analyzeTAC()
     truth = _simulator.getTau2Ref();
     guess = _PETRTM.getTau2RefInRun(0);
     _errorTau2Ref->setText(analyzeString(truth,guess));
-    dPoint2D k2Ref = _PETRTM.getk2RefInRun(0);
 
     // challenge
     if ( _fitChallenge->isChecked() )
@@ -2047,7 +2006,7 @@ void SimWindow::analyzeTAC()
         truth = _simulator.getChallengeMag();  // delta_BPnd abs
         guess = getChallengeMagFromAnalysis();
         QString diffString;
-        valueString.setNum(guess,'g',2);
+        QString valueString;  valueString.setNum(guess,'g',2);
         if ( guess == 0. )
             diffString = "----";
         else
@@ -2063,7 +2022,7 @@ void SimWindow::analyzeTAC()
     {
         truth = _simulator.getTau4();  // delta_BPnd abs
         guess = _PETRTM.getTau4InRun(0);
-        valueString.setNum(guess,'g',2);
+        QString valueString;  valueString.setNum(guess,'g',2);
         if ( guess == 0. )
             _errork4->setText("----");
         else
@@ -2076,14 +2035,14 @@ void SimWindow::analyzeTAC()
         sigma = qSqrt(_PETRTM.getSimulationSigma2(0));
     else
         sigma = qSqrt(_PETRTM.getSigma2());
-    valueString.setNum(sigma,'g',3);
+    QString valueString;  valueString.setNum(sigma,'g',3);
     _sigma->setText(valueString);
 
     if ( analyzeRealData() )
     {
 //        if ( changedAnalysisRegion )
 //        {
-            double BPnd = _PETRTM.getBP0InRun(0);
+            double BPnd = _PETRTM.getBP0InRun(0).x;
             double R1   = _PETRTM.getR1InRun(0).x;
             _simulator.setBP0(BPnd);  _simulator.setR1(R1);
             QString text; _BPnd->setText(text.setNum(BPnd));  _R1->setText(text.setNum(R1));
@@ -2098,14 +2057,15 @@ void SimWindow::analyzeTAC()
 }
 double SimWindow::getChallengeMagFromAnalysis()
 {
+    FUNC_ENTER;
     _PETRTM.updateConditions();
     int nConditions = _PETRTM.getNumberConditions();
     if ( nConditions == 2 )
     {
         _PETRTM.setCurrentCondition(1);
         _PETRTM.evaluateCurrentCondition();
-        double percentChange = _PETRTM.getBPndInCurrentCondition().x;
-        percentChange *= 100./_PETRTM.getBP0InRun(0);
+        double percentChange = _PETRTM.getBPndInCurrentCondition();
+        percentChange *= 100./_PETRTM.getBP0InRun(0).x;
         return percentChange;
     }
     else
@@ -2113,6 +2073,7 @@ double SimWindow::getChallengeMagFromAnalysis()
 }
 QString SimWindow::analyzeString(double truth, double guess)
 {
+    FUNC_ENTER;
     if ( analyzeRealData() )
     {
         QString valueString;
@@ -2130,6 +2091,7 @@ QString SimWindow::analyzeString(double truth, double guess)
 
 void SimWindow::scaleSimulationToDataAverage()
 {
+    FUNC_ENTER;
     if ( !realDataAvailable() ) return;
 
     // update the simulation
@@ -2161,6 +2123,7 @@ void SimWindow::scaleSimulationToDataAverage()
 ///////////////////////////////////////
 void SimWindow::changedNumberThreads(int indexInBox)
 {
+    FUNC_ENTER;
     _nThreads = indexInBox + 1;
     QString numberString;
     _nSamplesBPnd->setText((numberString.setNum(_nThreads*_numberSimulationsPerThread)));
@@ -2168,6 +2131,7 @@ void SimWindow::changedNumberThreads(int indexInBox)
 
 void SimWindow::changedNumberBins()
 {
+    FUNC_ENTER;
     bool ok;
     int numberBins = _numberTimeBins->text().toInt(&ok);
     if ( ok && numberBins != _simulator.getNumberBins() )
@@ -2186,12 +2150,14 @@ void SimWindow::changedNumberBins()
 }
 void SimWindow::changedBinIndex(int indexPlusOne)
 {
+    FUNC_ENTER;
     int iBin = indexPlusOne-1;
     double duration = _simulator.getDurationPerBinSec(iBin);
     QString text; _binDuration->setText(text.setNum(duration));
 }
 void SimWindow::changedBinDuration()
 {
+    FUNC_ENTER;
     bool ok;
     int duration = _binDuration->text().toInt(&ok);
     int iBin = _binIndex->value() - 1;
@@ -2219,6 +2185,7 @@ void SimWindow::changedBinDuration()
 }
 void SimWindow::changedApplyToAllBinDuration(bool state)
 {
+    FUNC_ENTER;
     if ( state )
     {
         bool ok;
@@ -2232,6 +2199,7 @@ void SimWindow::changedApplyToAllBinDuration(bool state)
 }
 void SimWindow::changedSubSample()
 {
+    FUNC_ENTER;
     QString stringEntered = _subSample->text();
     bool ok;
     int lSubSample = stringEntered.toInt(&ok);
@@ -2247,6 +2215,7 @@ void SimWindow::changedSubSample()
 }
 void SimWindow::changedBolusMag()
 {
+    FUNC_ENTER;
     QString stringEntered = _bolusMag->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2273,6 +2242,7 @@ void SimWindow::changedTauBolus()
 }
 void SimWindow::changedInfusion()
 {
+    FUNC_ENTER;
     QString stringEntered = _KBol->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2286,6 +2256,7 @@ void SimWindow::changedInfusion()
 }
 void SimWindow::changedInfusionDelay()
 {
+    FUNC_ENTER;
     QString stringEntered = _KBolDelay->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2299,6 +2270,7 @@ void SimWindow::changedInfusionDelay()
 }
 void SimWindow::changedTau2Ref()
 {
+    FUNC_ENTER;
     QString stringEntered = _tau2Ref->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2328,6 +2300,7 @@ void SimWindow::changedTau1Ref()
 
 void SimWindow::changedPlasmaFracRef()
 {
+    FUNC_ENTER;
     QString utilityString = _plasmaFracRef->text();
     bool ok;
     double value = utilityString.toDouble(&ok);
@@ -2341,6 +2314,7 @@ void SimWindow::changedPlasmaFracRef()
 }
 void SimWindow::changedPlasmaFracTar()
 {
+    FUNC_ENTER;
     QString utilityString = _plasmaFracTar->text();
     bool ok;
     double value = utilityString.toDouble(&ok);
@@ -2354,6 +2328,7 @@ void SimWindow::changedPlasmaFracTar()
 }
 void SimWindow::changedNoiseRef()
 {
+    FUNC_ENTER;
     QString utilityString = _noiseRef->text();
     bool ok;
     double value = utilityString.toDouble(&ok);
@@ -2369,6 +2344,7 @@ void SimWindow::changedNoiseRef()
 }
 void SimWindow::changedFastElimination()
 {
+    FUNC_ENTER;
     QString stringEntered = _fastTau->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2382,6 +2358,7 @@ void SimWindow::changedFastElimination()
 }
 void SimWindow::changedSlowElimination()
 {
+    FUNC_ENTER;
     QString stringEntered = _slowTau->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2395,6 +2372,7 @@ void SimWindow::changedSlowElimination()
 }
 void SimWindow::changedFastEliminationFraction()
 {
+    FUNC_ENTER;
     QString stringEntered = _fastFraction->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2408,6 +2386,7 @@ void SimWindow::changedFastEliminationFraction()
 }
 void SimWindow::changedBPND()
 {
+    FUNC_ENTER;
     QString stringEntered = _BPnd->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2421,6 +2400,7 @@ void SimWindow::changedBPND()
 }
 void SimWindow::changedR1()
 {
+    FUNC_ENTER;
     QString stringEntered = _R1->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2434,6 +2414,7 @@ void SimWindow::changedR1()
 }
 void SimWindow::changedTau4()
 {
+    FUNC_ENTER;
     QString stringEntered = _tau4->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2451,8 +2432,23 @@ void SimWindow::changedTau4()
     else
         _tau4->setText(stringEntered.setNum(_simulator.getTau4()));
 }
+void SimWindow::changedDV()
+{
+    FUNC_ENTER;
+    QString stringEntered = _DV->text();
+    bool ok;
+    double value = stringEntered.toDouble(&ok);
+    if ( ok )
+    {
+        _simulator.setDV(value);
+        updateAllGraphs();
+    }
+    else
+        _DV->setText(stringEntered.setNum(_simulator.getDV()));
+}
 void SimWindow::changedChallengeTime()
 {
+    FUNC_ENTER;
     QString stringEntered = _challengeTime->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2468,6 +2464,7 @@ void SimWindow::changedChallengeTime()
 }
 void SimWindow::changedChallengeMag()
 {
+    FUNC_ENTER;
     QString stringEntered = _challengeMag->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2481,6 +2478,7 @@ void SimWindow::changedChallengeMag()
 }
 void SimWindow::changedNoiseTar()
 {
+    FUNC_ENTER;
     QString utilityString = _noiseTar->text();
     bool ok;
     double value = utilityString.toDouble(&ok);
@@ -2496,12 +2494,14 @@ void SimWindow::changedNoiseTar()
 }
 void SimWindow::changedIgnoreString()
 {
+    FUNC_ENTER;
     QString stringEntered = _ignoreString->text();
     _PETRTM.setIgnoredPoints(0,true,stringEntered);
     updateAllGraphs();
 }
 void SimWindow::changedTau2RefAnalysis()
 {
+    FUNC_ENTER;
     QString stringEntered = _tau2RefAnalysis->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2515,37 +2515,38 @@ void SimWindow::changedTau2RefAnalysis()
 }
 void SimWindow::changedTau4Analysis()
 {
+    FUNC_ENTER;
     QString stringEntered = _tau4Analysis->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
     if ( ok )
     {
         _PETRTM.setTau4(0,value);
-        _PETRTM.setTau4Nominal(value);
+        _PETRTM._simulator[0].setTau4(value);
         updateAllGraphs();
     }
     else
-        _tau4Analysis->setText(stringEntered.setNum(_PETRTM.getTau4(0)));
+        _tau4Analysis->setText(stringEntered.setNum(_PETRTM.getTau4InRun(0)));
 }
 void SimWindow::changedCheckBoxFitk4(bool state)
 {
+    FUNC_ENTER;
     _errork4Label->setVisible(state);
     _errork4->setVisible(state);
     _checkBoxk4ErrGraph->setChecked(state);
     _checkBoxk4ErrGraph->setVisible(state);
 //    clearTimeCurves();
-    _PETRTM.setFitk4State(state);
+    _PETRTM.setFitk4(state);
     _PETRTM.setPrepared(false);
     updateAllGraphs();
 }
 void SimWindow::changedCheckBoxChallenge(bool state)
 {
+    FUNC_ENTER;
     _errorChallengeLabel->setVisible(state);
     _errorChallenge->setVisible(state);
     _checkBoxChallErrVsBPnd->setChecked(state);
     _checkBoxChallErrVsBPnd->setVisible(state);
-    _errordk2aLabel->setVisible(state);
-    _errordk2a->setVisible(state);
     clearTimeCurves();
 
     int indexChallenge = _PETRTM.getEventIndex('c');
@@ -2567,6 +2568,7 @@ void SimWindow::changedCheckBoxChallenge(bool state)
 
 void SimWindow::changedBPndLow()
 {
+    FUNC_ENTER;
     QString stringEntered = _BPndLow->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2577,6 +2579,7 @@ void SimWindow::changedBPndLow()
 }
 void SimWindow::changedBPndHigh()
 {
+    FUNC_ENTER;
     QString stringEntered = _BPndHigh->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2587,6 +2590,7 @@ void SimWindow::changedBPndHigh()
 }
 void SimWindow::changedBPndStep()
 {
+    FUNC_ENTER;
     QString stringEntered = _BPndStep->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2597,6 +2601,7 @@ void SimWindow::changedBPndStep()
 }
 void SimWindow::changedTau4High()
 {
+    FUNC_ENTER;
     QString stringEntered = _tau4High->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2607,6 +2612,7 @@ void SimWindow::changedTau4High()
 }
 void SimWindow::changedTau4Step()
 {
+    FUNC_ENTER;
     QString stringEntered = _tau4Step->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2617,6 +2623,7 @@ void SimWindow::changedTau4Step()
 }
 void SimWindow::changedNumberSimulationsBPnd()
 {
+    FUNC_ENTER;
     QString utilityString = _nSamplesBPndPerThread->text();
     bool ok;
     int value = utilityString.toInt(&ok);
@@ -2628,6 +2635,7 @@ void SimWindow::changedNumberSimulationsBPnd()
 }
 void SimWindow::changedTimeLow()
 {
+    FUNC_ENTER;
     QString stringEntered = _timeLow->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2638,6 +2646,7 @@ void SimWindow::changedTimeLow()
 }
 void SimWindow::changedTimeHigh()
 {
+    FUNC_ENTER;
     QString stringEntered = _timeHigh->text();
     bool ok;
     double value = stringEntered.toDouble(&ok);
@@ -2648,6 +2657,7 @@ void SimWindow::changedTimeHigh()
 }
 void SimWindow::changedVersusBPndGraphs()
 {
+    FUNC_ENTER;
     _plotErrBPndVsBPnd->getPlotSurface()->setVisible(_checkBoxBPndErrVsBPnd->isChecked());
     _plotErrChallVsBPnd->getPlotSurface()->setVisible(_checkBoxChallErrVsBPnd->isChecked());
     _plotTau2RefVsBPnd->getPlotSurface()->setVisible(_checkBoxTau2RefGraph->isChecked());
@@ -2655,12 +2665,14 @@ void SimWindow::changedVersusBPndGraphs()
 }
 void SimWindow::changedVersusTau4Graphs()
 {
+    FUNC_ENTER;
     _plotErrBPndVsTau4->getPlotSurface()->setVisible(_checkBoxBPndErrVsTau4->isChecked());
     _plotErrChallVsTau4->getPlotSurface()->setVisible(_checkBoxChallErrVsTau4->isChecked());
     _plotAICVsTau4->getPlotSurface()->setVisible(_checkBoxAICVsTau4->isChecked());
 }
 void SimWindow::clearBPndCurves()
 {
+    FUNC_ENTER;
     QCPRange xRange;
     xRange.lower = _BPndLowValue  - _BPndStepValue;
     xRange.upper = _BPndHighValue + _BPndStepValue;
@@ -2693,6 +2705,7 @@ void SimWindow::clearBPndCurves()
 
 void SimWindow::clearTau4Curves()
 {
+    FUNC_ENTER;
     QCPRange xRange = {0.,_tau4HighValue};
 
     _plotErrBPndVsTau4->init();
@@ -2717,6 +2730,7 @@ void SimWindow::clearTau4Curves()
 
 void SimWindow::calculateTau4Curves()
 {  // sweep tau4 truth or tau4 analysis??
+    FUNC_ENTER;
     bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
 //    if ( noisy || _PETRTM.isForwardFitk4() )
     if ( noisy )
@@ -2725,7 +2739,7 @@ void SimWindow::calculateTau4Curves()
         return;
     }
 
-    double saveTau4    = _PETRTM.getTau4(0); // tau4 will be changed, so save the value for later restoration
+    double saveTau4    = _PETRTM.getTau4InRun(0); // tau4 will be changed, so save the value for later restoration
     double saveTau2Ref = _PETRTM.getTau2RefFRTMInRun(0);
     QString numberString;
     int nTime = _simulator.getNumberTimeBinsCoarse();
@@ -2740,7 +2754,7 @@ void SimWindow::calculateTau4Curves()
 
     for (int jt=0; jt<nTime; jt++)
         tissueVector[0][jt] = _simulator.getCtCoarse(jt);
-    _PETRTM.setTissueVector(tissueVector);
+    _PETRTM.setTissueRegion(tissueVector);
 
     for (double tau4=0; tau4<=_tau4HighValue; tau4 += _tau4StepValue)
     {
@@ -2778,9 +2792,9 @@ void SimWindow::calculateTau4Curves()
             sigma2Sum += _PETRTM.getSigma2();
 
         // update the BP error
-        double guess = _PETRTM.getBP0InRun(0);
-//        errBPnd.append(percentageError(guess,BP0));
-        errBPnd.append(guess-BP0);
+        double guess = _PETRTM.getBP0InRun(0).x;
+        errBPnd.append(percentageError(guess,BP0));
+//        errBPnd.append(guess-BP0);
         // update the challenge error
         double truth = _simulator.getChallengeMag();
         guess = getChallengeMagFromAnalysis();
@@ -2836,6 +2850,7 @@ void SimWindow::calculateTau4Curves()
 
 void SimWindow::calculateBPndCurves()
 {
+    FUNC_ENTER;
     bool noisy = _simulator.getNoiseRef() != 0. || _simulator.getNoiseTar() != 0.;
 //    if ( noisy || _PETRTM.isForwardFitk4() )
     if ( noisy )
@@ -2866,7 +2881,7 @@ void SimWindow::calculateBPndCurves()
             refRegion[0][jt]    = _simulator.getCrCoarse(jt);
             tissueVector[0][jt] = _simulator.getCtCoarse(jt);
         }
-        _PETRTM.setTissueVector(tissueVector);
+        _PETRTM.setTissueRegion(tissueVector);
 
         _PETRTM.prepare();
         _PETRTM.fitData(tissueVector,fitVector);
@@ -2877,7 +2892,7 @@ void SimWindow::calculateBPndCurves()
             sigma2Sum += _PETRTM.getSigma2();
 
         // update the BP error
-        double guess = _PETRTM.getBP0InRun(0);
+        double guess = _PETRTM.getBP0InRun(0).x;
         errBPnd.append(percentageError(guess,BP0));
 //        errBPnd.append(guess-BP0);
         // update the challenge error
@@ -2886,7 +2901,7 @@ void SimWindow::calculateBPndCurves()
         errChall.append(guess - truth);
 //        errChall.append(percentageError(guess,truth));
         // update the 1/k4 error
-        if ( _PETRTM.isForwardFitk4() )
+        if ( _PETRTM.getFitk4() )
         {
             truth = _simulator.getTau4();
             guess = _PETRTM.getTau4InRun(0);
@@ -2908,7 +2923,7 @@ void SimWindow::calculateBPndCurves()
             _tau2RefAnalysis->setText(numberString.setNum(bestTau2Ref));  changedTau2RefAnalysis();
             // Update error vectors for optimized RTM2
             truth = _simulator.getBP0();
-            guess = _PETRTM.getBP0InRun(0);
+            guess = _PETRTM.getBP0InRun(0).x;
             errBPndRTM2.append(percentageError(guess,BP0));
             truth = _simulator.getChallengeMag();
             guess = getChallengeMagFromAnalysis();
@@ -2951,7 +2966,7 @@ void SimWindow::calculateBPndCurves()
     bool calculateTau2Ref = !_PETRTM.isRTM2() || _checkBoxTau2RefGraph->isChecked();
     if ( calculateTau2Ref )
         _plotTau2RefVsBPnd->setData(xVector,tau2Ref);
-    if ( _PETRTM.getFitk4State() )
+    if ( _PETRTM.getFitk4() )
     {
 //        if ( _PETRTM.isForwardModel() && _PETRTM.isRTM3() )
 //            _plotErrk4VsBPnd->setData(_tau4Vector,_AICVector);
@@ -2986,9 +3001,10 @@ void SimWindow::calculateBPndCurves()
 
 double SimWindow::bestTau2RefForRTM2()
 { // search for root
+    FUNC_ENTER;
     double tau2Ref = _PETRTM.getTau2RefInRun(0);
     double trueBP0 = _simulator.getBP0();
-    double estBP0  = _PETRTM.getBP0InRun(0);
+    double estBP0  = _PETRTM.getBP0InRun(0).x;
     double error   = estBP0 - trueBP0;
     QString numberString;
     if ( error > 0. )
@@ -2997,7 +3013,7 @@ double SimWindow::bestTau2RefForRTM2()
         {
             tau2Ref -= 0.05;
             _tau2RefAnalysis->setText(numberString.setNum(tau2Ref));  changedTau2RefAnalysis();
-            estBP0 = _PETRTM.getBP0InRun(0);
+            estBP0 = _PETRTM.getBP0InRun(0).x;
             error = estBP0 - trueBP0;
         }
     }
@@ -3007,7 +3023,7 @@ double SimWindow::bestTau2RefForRTM2()
         {
             tau2Ref += 0.05;
             _tau2RefAnalysis->setText(numberString.setNum(tau2Ref));  changedTau2RefAnalysis();
-            estBP0 = _PETRTM.getBP0InRun(0);
+            estBP0 = _PETRTM.getBP0InRun(0).x;
             error = estBP0 - trueBP0;
         }
     }
@@ -3016,6 +3032,7 @@ double SimWindow::bestTau2RefForRTM2()
 
 void SimWindow::clearTimeCurves()
 {
+    FUNC_ENTER;
     QCPRange xRange;
     xRange.lower = _timeLowValue;
     xRange.upper = _timeHighValue;
@@ -3040,6 +3057,7 @@ void SimWindow::calculateTimeCurves()
 */
 void SimWindow::calculateTimeCurves()
 {
+    FUNC_ENTER;
     QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
                          Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
     int nCurves = _plotErrBPndOrChallVsTime->getNumberCurves();
@@ -3069,7 +3087,7 @@ void SimWindow::calculateTimeCurves()
                 analyzeTAC();
 
                 double truth = _simulator.getBP0();
-                double guess = _PETRTM.getBP0InRun(0);
+                double guess = _PETRTM.getBP0InRun(0).x;
                 errVector.append(percentageError(guess,truth));
 
                 _ignoreString->setText("");
@@ -3098,6 +3116,7 @@ void SimWindow::calculateTimeCurves()
 
 void SimWindow::calculateTau4CurvesInThreads()
 {
+    FUNC_ENTER;
     updateLieDetectorProgress(10*_nThreads);
 
     _tau4Vector.clear();
@@ -3122,6 +3141,7 @@ void SimWindow::calculateTau4CurvesInThreads()
 
 void SimWindow::calculateBPndCurvesInThreads()
 {
+    FUNC_ENTER;
     updateLieDetectorProgress(10*_nThreads);
 
     _BP0Vector.clear();
@@ -3146,6 +3166,7 @@ void SimWindow::calculateBPndCurvesInThreads()
 
 void SimWindow::updateLieDetectorProgress(int iProgress)
 {
+    FUNC_ENTER;
     static int progressCounter=0;
     if ( iProgress > 0 )  // this gives the range
     { // initialize with nVolumes = iProgress
@@ -3163,6 +3184,7 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
                                                  dMatrix tau2Ref, dMatrix errTau4,
                                                  double sigma2)
 {
+    FUNC_ENTER;
     static int nThreadsFinished=0;
     static double sigma2Sum=0.;
 
@@ -3208,6 +3230,7 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
 
 void SimWindow::finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errChall, dMatrix AIC, double sigma2)
 {
+    FUNC_ENTER;
     static int nThreadsFinished=0;
     static double sigma2Sum=0.;
 
@@ -3251,6 +3274,7 @@ void SimWindow::finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errCha
 
 double SimWindow::calculateMean(dVector vec)
 {
+    FUNC_ENTER;
     double mean = 0.;
     for (int j=0; j<vec.size(); j++)
         mean += vec[j];
@@ -3259,6 +3283,7 @@ double SimWindow::calculateMean(dVector vec)
 }
 double SimWindow::calculateStDev(double mean, dVector vec)
 {
+    FUNC_ENTER;
     double stdev = 0.;
     for (int j=0; j<vec.size(); j++)
         stdev += SQR(vec[j] - mean);
@@ -3269,6 +3294,7 @@ double SimWindow::calculateStDev(double mean, dVector vec)
 
 void SimWindow::finishedLieDetectorBPndAllThreads()
 {
+    FUNC_ENTER;
     int nBP0Values = _BP0Vector.size();
     int nSamples   = _nThreads * _numberSimulationsPerThread;
 
@@ -3331,7 +3357,7 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
     _plotErrChallVsBPnd->setData(_BP0Vector,errChall,errChallSEM);
     if ( !_PETRTM.isRTM2() )
         _plotTau2RefVsBPnd->setData(_BP0Vector,tau2Ref,tau2RefSEM);
-    if ( _PETRTM.getFitk4State() )
+    if ( _PETRTM.getFitk4() )
         _plotErrk4VsBPnd->setData(_BP0Vector,errTau4,errTau4SEM);
 
     _plotErrBPndVsBPnd->conclude(0,true);
@@ -3349,6 +3375,7 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
 
 void SimWindow::finishedLieDetectorTau4AllThreads()
 {
+    FUNC_ENTER;
     int nTau4Values = _tau4Vector.size();
     int nSamples    = _nThreads * _numberSimulationsPerThread;
 
@@ -3409,254 +3436,4 @@ void SimWindow::finishedLieDetectorTau4AllThreads()
     _plotAICVsTau4->plotDataAndFit(true);
 
     _progressBar->reset();
-}
-
-void Fitter::init(dVector RRTimeVector, dVector RRVector)
-{
-    FUNC_ENTER << RRTimeVector;
-    _RRTimeVector   = RRTimeVector;
-    _RRVector       = RRVector;
-    // define a polynomial based upon the RR bins, which may be unevenly spaced
-    _polyPlusGammaForRR.define(_nPoly, _nPoly+1,_RRTimeVector); // extra basis function is gamma-variate
-    int nTime = _RRTimeVector.size();
-    // Now add a gamma basis function, with variable parameters 1) onset time, 2) alpha, 3) tau
-    // find starting point for tau
-    double rrMaxTime = 0.;   double rrMaxValue = 0.;
-    for (int jt=0; jt<nTime; jt++)
-    {
-        if ( _RRVector[jt] > rrMaxValue )
-        {
-            rrMaxValue = _RRVector[jt];
-            rrMaxTime  = _RRTimeVector[jt];
-        }
-    }
-    double tau = rrMaxTime;  double onsetTime = 0;  double alpha = 1.;
-    FUNC_INFO << "set tau guess to " << tau;
-    _gammaParVal.resize(_nPar);     _gammaParInc.resize(_nPar);     _gammaParAdj.resize(_nPar);
-    _gammaParVal[0] = onsetTime;    _gammaParVal[1] = alpha;        _gammaParVal[2] = tau;
-    _gammaParInc[0] = 0.5;          _gammaParInc[1] = alpha/10.;    _gammaParInc[2] = tau/10.;
-    _gammaParAdj[0] = true;         _gammaParAdj[1] = true;         _gammaParAdj[2] = true;
-}
-
-void Fitter::setPolynomial(int nPoly)
-{ // only call this this function AFTER initializing the RR
-    _nPoly = nPoly;
-    // define a polynomial based upon the RR bins, which may be unevenly spaced
-    _polyPlusGammaForRR.define(_nPoly,_nPoly+1,_RRTimeVector);   // extra basis function is gamma-variate
-    _gammaParInc[0] = 0.5;
-    _gammaParInc[1] = _gammaParVal[1]/10.;
-    _gammaParInc[2] = _gammaParVal[2]/10.;
-}
-
-double Fitter::computeGammaFunction(double time)
-{
-    // gamma(x) = x^alpha * exp*(alpha(1-x))
-    double onsetTime = _gammaParVal.at(0);
-    double alpha     = _gammaParVal.at(1);
-    double tau       = _gammaParVal.at(2);
-    double t = (time - onsetTime) / tau;
-    double gammaValue=0.;
-    if ( t > 0. )
-        gammaValue = qPow(t,alpha) * qExp(alpha*(1.-t));
-    return gammaValue;
-}
-double Fitter::computeGammaFunctionDerivative(double time)
-{
-    double onsetTime = _gammaParVal.at(0);
-    double alpha     = _gammaParVal.at(1);
-    double tau       = _gammaParVal.at(2);
-    double t = (time - onsetTime) / tau;
-    double gammaDerivative=0.;
-    if ( t > 0. )
-        gammaDerivative = alpha/tau * qPow(t,alpha-1.) * qExp(alpha*(1.-t)) * (1.-t);
-    return gammaDerivative;
-}
-double Fitter::fitRRComputeCost()
-{ // fit RR by GLM and compute sigma2
-    // get the RR time vector (x, not y)
-    dVector gammaBasis;  gammaBasis.fill(0.,_RRTimeVector.size());
-    for (int jt=0; jt<_RRTimeVector.size(); jt++)
-        gammaBasis[jt] = computeGammaFunction(jt);
-    _polyPlusGammaForRR.addOrInsertBasisFunction(_nPoly,gammaBasis);
-    // The basis functions are complete
-    _polyPlusGammaForRR.fitWLS(_RRVector,true);
-    double cost = getCostFunction();
-    return cost;
-}
-void Fitter::fitTAC(double toleranceCost) // toleranceCost is a fraction (e.g., 0.01 is 1%)
-{
-    int iCount = 0;
-    // Find the best set of parameters at this resolution level.
-    bool converged = false;
-    int MAXIT = 50;
-    while ( !converged && iCount < MAXIT )
-    {
-        double costInitial = getCostFunction();
-        ////////////////////////
-        dVector costPar; costPar.resize(_nPar);
-        dVector incPar;  incPar.resize(_nPar);
-        // Test each parameter by increasing and decreasing its value by the increment.
-        for (int jPar=0; jPar<_nPar; jPar++)
-        {
-            if ( _gammaParAdj[jPar] && _gammaParInc[jPar] != 0. )
-            { // an increment of zero eliminates the parameter from the search
-                // find the best value for this parameter.
-                lineScan1D(jPar, costPar[jPar], incPar[jPar]);
-            }
-            else
-                costPar[jPar] = incPar[jPar]  = 0.;
-        }
-
-        // Normalize the costPar array.
-        double mag=0.;
-        for (int jPar=0; jPar<_nPar; jPar++)
-            mag += SQR(costPar[jPar]);
-        mag = qSqrt(mag);
-        // If the magnitude of the costPar vector is 0, then no values are lower than the
-        // original value.
-        if ( mag == 0. )
-            break;
-        for (int jPar=0; jPar<_nPar; jPar++)
-            costPar[jPar] /= mag;
-
-        // Calculate the projection of the incPar along the normalized costPar vector.
-        for (int jPar=0; jPar<_nPar; jPar++)
-        {
-            incPar[jPar] = incPar[jPar] * costPar[jPar];
-            if ( _gammaParAdj[jPar] ) _gammaParVal[jPar] += incPar[jPar];
-        }
-        qDebug() << "iteration" << iCount << "pars:" << _gammaParVal[0] << _gammaParVal[1] << _gammaParVal[2];
-        qDebug() << "iteration" << iCount << "incs:" << _gammaParInc[0] << _gammaParInc[1] << _gammaParInc[2];
-        qDebug() << "iteration" << iCount << "rCost:" << getCostFunction()/costInitial;
-        ////////////////////////
-        double costFinal = getCostFunction();
-        converged = qAbs(costFinal/costInitial - 1.) < toleranceCost;
-        converged &= iCount > 10;
-        qDebug() << "converged?" << costInitial << costFinal << qAbs(costFinal/costInitial - 1.) << toleranceCost;
-        iCount++;
-    }
-    qDebug() << "Fitter::fitTAC exit";
-}
-
-void Fitter::lineScan1D( int iPar, double &costRelative, double &incrementOpt )
-{ // return value is true if a change was made
-    double valueInitial = _gammaParVal[iPar];
-    double costInitial  = fitRRComputeCost();  // refit with all initial parameter set
-    // Save the initial cost function.
-    double xParabola[3], yParabola[3];
-    xParabola[1] = valueInitial;
-    yParabola[1] = costInitial;
-
-    // Now test + and - directions
-    // test the - direction
-    double value0 = valueInitial - _gammaParInc[iPar];
-    _gammaParVal[iPar] = value0;
-    double cost0 = fitRRComputeCost();
-    xParabola[0] = value0;
-    yParabola[0] = cost0;
-
-    // test the + direction
-    double value2 = valueInitial + _gammaParInc[iPar];
-    _gammaParVal[iPar] = value2;
-    double cost2 = fitRRComputeCost();
-    xParabola[2] = value2;
-    yParabola[2] = cost2;
-
-    // allocate values that might be required if we need to keep going in one direction to find the max
-    bool capturedMinOrMax;
-    if ( _optHigh )
-        capturedMinOrMax = costInitial > cost0 && costInitial > cost2;  // costInitial is higher than either side, so good
-    else
-        capturedMinOrMax = costInitial < cost0 && costInitial < cost2;  // costInitial is lower than either side, so good
-    if ( capturedMinOrMax )
-    { // the increment range contains the maximum/minimum of the cost function, so interpolate to get the best estimate
-        double xMax, yMax;
-        if ( utilMath::ParabolicInterpolation(xParabola, yParabola, xMax, yMax) )
-        { // set the final increment to the interpolated value; half the increment range for next time
-            if ( _optHigh )
-                costRelative = yMax - costInitial;  // cost function should be growing
-            else
-                costRelative = costInitial - yMax;  // cost function should be shrinking
-            incrementOpt = xMax - valueInitial;
-            _gammaParInc[iPar] /= 2.;
-        }
-        else
-            // This should never happen.
-            costRelative = incrementOpt = 0.;
-    }
-    else if ( qFuzzyCompare(costInitial,cost0) || qFuzzyCompare(costInitial,cost2) )
-        // not enough information
-        costRelative = incrementOpt = 0.;
-    else
-    { // set the increment at the best edge
-        if ( cost2 > cost0 )  // cost2 > costInitial > cost0
-        {
-            if ( _optHigh )
-            {
-                incrementOpt = _gammaParInc[iPar];
-                costRelative = cost2 - costInitial;
-            }
-            else
-            {
-                incrementOpt = - _gammaParInc[iPar];
-                costRelative = costInitial - cost0;
-            }
-        }
-        else // cost0 > costInitial > cost2
-        {
-            if ( _optHigh )
-            {
-                incrementOpt = -_gammaParInc[iPar];
-                costRelative = cost0 - costInitial;
-            }
-            else
-            {
-                incrementOpt = _gammaParInc[iPar];
-                costRelative = costInitial - cost2;
-            }
-        }
-    }
-    _gammaParVal[iPar] = valueInitial;  // reset parameter value
-    return;
-}
-
-void Fitter::fitGammaFunctionByGridSearch(double widthRatio)
-{
-    FUNC_ENTER;
-    // Fit a gamma function plus a polynomial by repeated GLM using a grid search for the best gamma parameters (3)
-    double onset = _gammaParVal.at(0);
-    double alpha = _gammaParVal.at(1);
-    double tau   = _gammaParVal.at(2);
-
-    double tauWidth = tau / widthRatio;
-    double alphaWidth = alpha / widthRatio;
-    double onsetWidth = qMax(onset/widthRatio,tauWidth);
-    FUNC_INFO << "tau, alpha, onset" << tauWidth << alphaWidth << onsetWidth;
-
-    double onSetStart = onset - onsetWidth; double onSetStop = onset + onsetWidth;  double onSetStep = onsetWidth/5.;
-    double tauStart   = tau - tauWidth;     double tauStop   = tau + tauWidth;      double tauStep   = tauWidth/5.;
-    double alphaStart = alpha - alphaWidth; double alphaStop = alpha + alphaWidth;  double alphaStep = alphaWidth/5.;
-    double bestSigma2 = fitRRComputeCost(); dVector bestGammaParVal = _gammaParVal;
-
-    for ( onset=onSetStart; onset<onSetStop; onset+=onSetStep)
-    {
-        _gammaParVal[0] = onset;
-        for ( alpha=alphaStart; alpha<alphaStop; alpha+=alphaStep)
-        {
-            _gammaParVal[1] = qMax(alpha,0.01);
-            for ( tau=qMax(tauStart,0.1); tau<tauStop; tau+=tauStep)
-            {
-                _gammaParVal[2] = tau;
-                double sigma2 = fitRRComputeCost();
-                if ( sigma2 < bestSigma2 )
-                {
-                    bestSigma2 = sigma2;
-                    bestGammaParVal = _gammaParVal;
-                }
-            }
-        }
-    }
-    _gammaParVal = bestGammaParVal;
-    fitRRComputeCost();
-    FUNC_INFO << "gammaParVal" << _gammaParVal;
 }

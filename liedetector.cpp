@@ -7,7 +7,7 @@ lieDetectorBPnd::lieDetectorBPnd(const int numberSamples, const dVector BP0Value
     _BP0Values      = BP0Values;
     _simulator      = simulator;
     _PETRTM         = pet;
-    _fitk4          = _PETRTM.getFitk4State() && _PETRTM.isForwardModel();
+    _fitk4          = _PETRTM.getFitk4() && _PETRTM.isForwardModel();
 }
 
 void lieDetectorBPnd::run()
@@ -25,7 +25,7 @@ void lieDetectorBPnd::run()
     int nSamplesTotal = nBPValues * _numberSamples;
     int iDiv = qMax(1,nSamplesTotal/10);
 
-    double tau4Guess = _PETRTM.getTau4Nominal();
+    double tau4Guess = _PETRTM._simulator[0].getTau4Nominal();
     if ( tau4Guess == 0. ) tau4Guess = 10.;
 
     dMatrix errBPnd, errChall, tau2Ref, errTau4;
@@ -44,7 +44,7 @@ void lieDetectorBPnd::run()
             // Perform the analysis
             for (int jt=0; jt<nTime; jt++)
                 tissueVector[0][jt] = _simulator.getCtCoarse(jt);
-            _PETRTM.setTissueVector(tissueVector);
+            _PETRTM.setTissueRegion(tissueVector);
             _PETRTM.prepare();
             _PETRTM.fitData(tissueVector);
 
@@ -54,7 +54,7 @@ void lieDetectorBPnd::run()
                 sigma2Sum += _PETRTM.getSigma2();
 
             // update the BP error
-            double guess = _PETRTM.getBP0InRun(0);
+            double guess = _PETRTM.getBP0InRun(0).x;
             errBPnd[jBP][jSample] = percentageError(guess,BP0);
 
             // update the challenge error
@@ -86,10 +86,8 @@ double lieDetectorBPnd::getChallengeMagFromAnalysis()
     if ( nConditions == 2 )
     {
         _PETRTM.evaluateCurrentCondition();
-        double percentChange = _PETRTM.getBPndInCurrentCondition().x;
-        percentChange *= 100./_PETRTM.getBP0InRun(0);
-        if ( _PETRTM.isFRTMNew() )
-            percentChange *= -1.;
+        double percentChange = _PETRTM.getBPndInCurrentCondition();
+        percentChange *= 100./_PETRTM.getBP0InRun(0).x;
         return percentChange;
     }
     else
@@ -102,7 +100,7 @@ lieDetectorTau4::lieDetectorTau4(const int numberSamples, const dVector tau4Valu
     _tau4Values      = tau4Values;
     _simulator      = simulator;
     _PETRTM         = pet;
-    _fitk4          = _PETRTM.getFitk4State() && _PETRTM.isForwardModel();
+    _fitk4          = _PETRTM.getFitk4() && _PETRTM.isForwardModel();
 }
 
 void lieDetectorTau4::run()
@@ -120,7 +118,7 @@ void lieDetectorTau4::run()
     int nSamplesTotal = nTau4Values * _numberSamples;
     int iDiv = qMax(1,nSamplesTotal/10);
 
-    double tau4Guess = _PETRTM.getTau4Nominal();
+    double tau4Guess = _PETRTM._simulator[0].getTau4Nominal();
     if ( tau4Guess == 0. ) tau4Guess = 10.;
 
     dMatrix errBPnd, errChall, AIC;
@@ -139,7 +137,7 @@ void lieDetectorTau4::run()
             // Perform the analysis
             for (int jt=0; jt<nTime; jt++)
                 tissueVector[0][jt] = _simulator.getCtCoarse(jt);
-            _PETRTM.setTissueVector(tissueVector);
+            _PETRTM.setTissueRegion(tissueVector);
             _PETRTM.prepare();
             _PETRTM.fitData(tissueVector);
 
@@ -147,7 +145,7 @@ void lieDetectorTau4::run()
 
             // update the BP error
             double truth = _simulator.getBP0();
-            double guess = _PETRTM.getBP0InRun(0);
+            double guess = _PETRTM.getBP0InRun(0).x;
             errBPnd[jBP][jSample] = percentageError(guess,truth);
 
             // update the challenge error
@@ -172,10 +170,8 @@ double lieDetectorTau4::getChallengeMagFromAnalysis()
     if ( nConditions == 2 )
     {
         _PETRTM.evaluateCurrentCondition();
-        double percentChange = _PETRTM.getBPndInCurrentCondition().x;
-        percentChange *= 100./_PETRTM.getBP0InRun(0);
-        if ( _PETRTM.isFRTMNew() )
-            percentChange *= -1.;
+        double percentChange = _PETRTM.getBPndInCurrentCondition();
+        percentChange *= 100./_PETRTM.getBP0InRun(0).x;
         return percentChange;
     }
     else

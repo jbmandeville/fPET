@@ -1,10 +1,19 @@
-QT += gui printsupport
-DEFINES += QT_NO_DEBUG_OUTPUT
-#QMAKE_MAC_SDK = macosx11.1
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+QT += gui printsupport core
+#DEFINES += QT_NO_DEBUG_OUTPUT
 
-LIBS += -L"$$_PRO_FILE_PWD_/3rdparty/fftw-3.3.8/lib" -lfftw3
-INCLUDEPATH += 3rdparty/fftw-3.3.8/include
+LIBS += -L"../util/3rdparty/nifticlib-2.0.0/znzlib" -L"../3rdparty/zlib-1.2.5/lib" -lznz -lz
+
+INCLUDEPATH += ../util
+INCLUDEPATH += ../util//3rdparty/qcustomplot
+INCLUDEPATH += ../FM
+INCLUDEPATH += ../util/3rdparty/nifticlib-2.0.0/include
+INCLUDEPATH += ../util/3rdparty/nifticlib-2.0.0/znzlib
+
+VPATH += ../util
+VPATH += ../FM
+VPATH += ../util/3rdparty
+VPATH += ../util/3rdparty/qcustomplot
+VPATH += ../util/3rdparty/nifticlib-2.0.0/include
 
 CONFIG+=sdk_no_version_check
 #CONFIG += c++11 console
@@ -22,16 +31,17 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-        generalglm.cpp \
         liedetector.cpp \
         main.cpp \
-        petrtm.cpp \
-        plot.cpp \
-        qcustomplot.cpp \
-        simanalyzer.cpp \
         simengine.cpp \
         simwindow.cpp \
-        utilio.cpp
+        petrtm.cpp \
+        simanalyzer.cpp \
+        generalglm.cpp \
+        plot.cpp \
+        qcustomplot.cpp \
+        utilio.cpp \
+        ImageIO.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -39,15 +49,16 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
 HEADERS += \
-    generalglm.h \
-    io.h \
     liedetector.h \
+    simengine.h \
+    simwindow.h \
     petrtm.h \
+    simanalyzer.h \
+    generalglm.h \
     plot.h \
     qcustomplot.h \
-    simanalyzer.h \
-    simengine.h \
-    simwindow.h
+    ImageIO.h \
+    io.h
 
 DISTFILES +=
 

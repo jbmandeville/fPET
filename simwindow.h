@@ -7,43 +7,6 @@
 #include "simengine.h"
 #include "petrtm.h"
 
-class Fitter     // UNUSED!
-{
-private:
-    dVector _RRTimeVector;
-    dVector _RRVector;
-    int _nPoly = 6;
-    int _nPar  = 3;
-    PolynomialGLM _polyPlusGammaForRR; // fit the RR as a polynomial plus a gamma function: order = {poly[_nPoly] gamma[1]}
-    dVector _gammaParVal; // parameter values for gamma function (exlude polynomial terms)
-    dVector _gammaParInc;
-    bVector _gammaParAdj;
-    bool _optHigh=false;
-
-    inline double getCostFunction() {return _polyPlusGammaForRR.getSigma2();}
-    void lineScan1D( int iPar, double &costRelative, double &incrementOpt );
-    double fitRRComputeCost();
-
-public:
-    void init(dVector RRTimeVector, dVector RRVector);
-    void setPolynomial(int nPoly);
-    void fitTAC(double toleranceCost);
-    void fitGammaFunctionByGridSearch(double widthRatio);
-    double computeGammaFunction(double time);
-    inline double computeGammaFunction(int iTime) {return computeGammaFunction(_RRTimeVector[iTime]);}
-    double computeGammaFunctionDerivative(double time);
-
-    // getters
-    inline dVector getAllGammaParValues() {return _gammaParVal;}
-    inline int getNumberTimeBins() {return _RRTimeVector.size();}
-    inline double getTimePoint(int iTime) {return _RRTimeVector[iTime];}
-    inline double getFit(int iTime)    {return _polyPlusGammaForRR.getFit(iTime);}  // by index
-    inline double getFit(double time)  {return _polyPlusGammaForRR.getFitInterpolation(time);}   // by any value (for interpolation)
-    inline double getFitDerivateive(double time)  {return _polyPlusGammaForRR.getDerivative(time);}   // by any value (for interpolation)
-    inline double getBeta(int iCoeff)  {return _polyPlusGammaForRR.getBeta(iCoeff);} // no error checking on iCoeff!
-    inline int getNumberCoefficients() {return _polyPlusGammaForRR.getNumberCoefficients();}
-};
-
 class SimWindow : public QMainWindow
 {
     Q_OBJECT
@@ -164,6 +127,7 @@ private:
     QLineEdit *_BPnd;
     QLineEdit *_R1;
     QLineEdit *_tau4;
+    QLineEdit *_DV;
     QLineEdit *_plasmaFracTar;
     QLineEdit *_noiseTar;
     QLineEdit *_challengeTime;
@@ -182,8 +146,6 @@ private:
     // errors
     QLabel *_errorBPnd;
     QLabel *_errork2;
-    QLabel *_errork2a;
-    QLabel *_errordk2a;
     QLabel *_errorR1;
     QLabel *_errorR1Label;
     QLabel *_errorTau2Ref;
@@ -312,6 +274,7 @@ private slots:
     void changedBPND();
     void changedR1();
     void changedTau4();
+    void changedDV();
     void changedChallengeTime();
     void changedChallengeMag();
     void changedPlasmaFracTar();

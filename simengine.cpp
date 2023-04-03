@@ -7,6 +7,7 @@
 
 simEngine::simEngine()
 {
+    FUNC_ENTER;
     // initialize
     initializeBins();
     // run
@@ -14,6 +15,7 @@ simEngine::simEngine()
 }
 void simEngine::initializeBins()
 {
+    FUNC_ENTER;
     if ( _nBins != _durationBinSec.size() )
     {
         double defaultBinSize=60;
@@ -26,6 +28,7 @@ void simEngine::initializeBins()
 }
 void simEngine::updateFineSamples()
 {
+    FUNC_ENTER;
     _dtFine.clear();  _timeFine.clear(); _timeCoarse.clear();  _dtCoarse.clear();
     double time=0.;
     for (int jBin=0; jBin<_nBins; jBin++)
@@ -48,6 +51,7 @@ void simEngine::updateFineSamples()
 
 void simEngine::setCrFit(dVector CrFitCoarse)
 {
+    FUNC_ENTER;
     if ( _nBins != CrFitCoarse.size() )
     {
         FUNC_INFO << _nBins << CrFitCoarse.size();
@@ -77,6 +81,7 @@ void simEngine::setCrFit(dVector CrFitCoarse)
 
 void simEngine::run()
 {
+    FUNC_ENTER;
     if ( _simStartingPoint == simStart_fromPlasma )
     {
         generatePlasmaTAC();
@@ -86,6 +91,7 @@ void simEngine::run()
 }
 void simEngine::generateTargetTAC()
 {
+    FUNC_ENTER;
     if ( _SRTM )
         generateTargetSRTM();
     else
@@ -94,6 +100,7 @@ void simEngine::generateTargetTAC()
 
 void simEngine::generatePlasmaTAC()
 {
+    FUNC_ENTER;
     // For simplicity, treat the plasma as two separate compartments: fast and slow
     // dC_p/dt = I(t)-K_fast*C_p-_slow*C_p*+Ks_in*C_s*(V_p/V_s)
 
@@ -123,31 +130,9 @@ void simEngine::generatePlasmaTAC()
     _CpBinned = downSample(_Cp);
 }
 
-double simEngine::baselineBasisFunction(int iPoly, double x)
-{ // return Legendre polynomial of x with order iPoly, where x is symmetric in (-1.,1.); x = -1. + 2.*time/duration
-    double value;
-    if ( iPoly == 0 )
-        value = 1.;
-    else if ( iPoly == 1 )
-        value = x;
-    else if ( iPoly == 2 )
-        value = 0.5 * (3*x*x -1.);
-    else if ( iPoly == 3 )
-        value = 0.5 * (5.*x*x*x - 3.*x);
-    else if ( iPoly == 4 )
-        value = 0.125 * (35.*x*x*x*x - 30.*x*x + 3.);
-    else // if ( iPoly == 5 )
-        value = 0.125 * (63.*x*x*x*x*x - 70.*x*x*x + 15.*x);
-    return value;
-}
-double simEngine::gammaVariateFunction(double time, double onset, double alpha, double tau)
-{ // return a normalized gamma variate function of form t^alpha * exp(alpha*t)
-    double t = (time - onset) / tau;
-    return qPow(t,alpha) * qExp(alpha*(1.-t));
-}
-
 void simEngine::generateReferenceTAC()
 {
+    FUNC_ENTER;
     // dCr_dt = K1 * Cp - k2 * Cr;
     // Cp = ( dCr_dt + k2 * Cr) / K1;
 
@@ -174,12 +159,13 @@ void simEngine::generateReferenceTAC()
 
 void simEngine::generateTargetSRTM()
 {
+    FUNC_ENTER;
     // dCt_dt = K1 * Cp - k2a * Ct
 
     // Derived quantities: update tissue properties
     _K1  = _R1 * _K1Ref;
-    _k2  = _R1 * _k2Ref;
-    double k2a = _k2 / (1. + _BP0);
+    double k2  = _R1 * _k2Ref / _DV;
+    double k2a = k2 / (1. + _BP0);
 
     double Ct=0.;
     int nTime = _dtFine.size();
@@ -191,7 +177,7 @@ void simEngine::generateTargetSRTM()
         if ( postChallenge && _deltaBPPercent != 0. )
         {
             double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
-            k2a = _k2 / (1. + BP1);
+            k2a = k2 / (1. + BP1);
         }
         dVector Cp;
         if ( _simStartingPoint == simStart_fromPlasma )
@@ -222,20 +208,24 @@ void simEngine::generateTargetSRTM()
 
 void simEngine::generateTargetFRTM()
 {
+    FUNC_ENTER;
     // dCb_dt = k3 * Cf - koff * Cb = kon * Bavail * Cf - koff * Cb
     // dCf_dt = K1 * Cp + koff * Cb - (k2+k3)*Cf
 
     // Derived quantities: update tissue properties
     _K1  = _R1 * _K1Ref;
-    _k2  = _R1 * _k2Ref;
+    double k2  = _R1 * _k2Ref / _DV;
     _k3  = _BP0  * _k4;
 
     double k3=_k3;
     double Cf=0.;  double Cb=0.;  double lastCr=0.;
     int nTime = _dtFine.size();
     _Cf.clear();  _Cb.clear();  _Ct.clear();
+    FUNC_INFO << "sizes" << _dtFine.size() << _CrFit.size();
+    FUNC_INFO << "_simStartingPoint" << _simStartingPoint;
     for ( int jt=0; jt<nTime; jt++)
     {
+        FUNC_INFO << "jt" << jt;
         int iDisplacementTime = static_cast<int>(_challengeTime / _dtFine[jt]);
         bool postChallenge = (jt > iDisplacementTime);
         if ( postChallenge && _deltaBPPercent != 0. )
@@ -243,33 +233,36 @@ void simEngine::generateTargetFRTM()
             double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
             k3 = BP1 * _k4;
         }
-        double Cr = _CrFit[jt];
         if ( jt > 0 )
         {
-            double dCrdt = (Cr - lastCr)/_dtFine[jt];
             double dCfdt;
             if ( _simStartingPoint == simStart_fromPlasma )
-                dCfdt = _K1 * _Cp[jt] + _k4 * Cb - (_k2 + k3) * Cf;
+                dCfdt = _K1 * _Cp[jt] + _k4 * Cb - (k2 + k3) * Cf;
             else
-                dCfdt = _K1/_K1Ref * ( _k2Ref * _CrFit[jt] + dCrdt) + _k4 * Cb - (_k2 + k3) * Cf;
+            {
+                double Cr = _CrFit[jt];
+                double dCrdt = (Cr - lastCr)/_dtFine[jt];
+                dCfdt = _K1/_K1Ref * ( _k2Ref * Cr + dCrdt) + _k4 * Cb - (k2 + k3) * Cf;
+                lastCr = Cr;
+            }
             double dCbdt = k3 * Cf - _k4 * Cb;
             Cf += dCfdt * _dtFine[jt];
             Cb += dCbdt * _dtFine[jt];
-            lastCr = Cr;
         }
         _Cf.append(Cf);
         _Cb.append(Cb);
         _Ct.append(Cf + Cb + _percentPlasmaTar/100. * _Cp[jt]);
-        lastCr = Cr;
     }
 
     // Downsample the TAC and add Noise
     _CtBinned = downSample(_Ct);
     addNoise(_noiseTar, _CtBinned);
+    FUNC_EXIT;
 }
 
 dVector simEngine::downSample(dVector original)
 {
+    FUNC_ENTER;
     if ( original.size() != _dtFine.size() )
         qFatal("Error: the fine-scale TAC does not match the fine-scale bin length in downSample().");
     dVector binned;
@@ -285,6 +278,7 @@ dVector simEngine::downSample(dVector original)
 }
 void simEngine::addNoise(double noiseScale, dVector &timeVector)
 { // add noise to time vector AFTER down-sampling
+    FUNC_ENTER;
     int nTime = timeVector.size();
     for ( int jt=0; jt<nTime; jt++)
     {
@@ -297,6 +291,7 @@ void simEngine::addNoise(double noiseScale, dVector &timeVector)
 }
 double simEngine::GaussianRandomizer(double sigma, double cutoff)
 {
+    FUNC_ENTER;
     double yGauss, y, x;
     do
     {
@@ -313,109 +308,4 @@ double simEngine::GaussianRandomizer(double sigma, double cutoff)
     while (y > yGauss);
 
   return( x );
-}
-
-dVector simEngine::FRTMNewAnalyticalSolution()
-{
-    int nTime = _CpBinned.size();
-    dVector convolution = calculateConvolution(_CtBinned);
-
-    dVector Ct; Ct.resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
-        Ct[jt] = _R1 * _CrBinned[jt] - _k2 * (integralOf(_CtBinned,jt) - integralOf(_CrBinned,jt)) + _k2*_k3 * integralOf(convolution,jt);
-    return Ct;
-}
-
-dVector simEngine::FRTMOldAnalyticalSolution()
-{
-    int nTime = _CpBinned.size();
-
-    // Calculate the derivative of the tissue vector
-    dVector tissDerivative = differentiateTissueVector();
-    dVector convolution = calculateConvolution(tissDerivative);
-    double k2a = _k2 / (1. + _k3/_k4);
-
-    dVector CrTerm; CrTerm.resize(nTime);
-    dVector CtTerm; CtTerm.resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
-    {
-        CrTerm[jt] = _CrBinned[jt]-convolution[jt];
-        CtTerm[jt] = _CtBinned[jt]-convolution[jt];
-    }
-
-    dVector Ct; Ct.resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
-        Ct[jt] = _R1 * _CrBinned[jt] + _k2 * integralOf(CrTerm,jt) - k2a * integralOf(CtTerm,jt);
-    return Ct;
-}
-
-double simEngine::integralOf(dVector tissue, int iTime)
-{
-    double integral=0;
-    for ( int jt=0; jt<=iTime; jt++)
-    {
-        double dt = static_cast<double>(_durationBinSec[jt])/60.;
-        integral += tissue[jt] * dt;
-    }
-    return integral;
-}
-
-dVector simEngine::differentiateTissueVector()
-{
-    int nTime = _CtBinned.size();
-    dVector derivative;  derivative.resize(nTime);
-    for (int jt=0; jt<nTime; jt++)
-    {
-        double dt = static_cast<double>(_durationBinSec[jt])/60.;
-        if ( jt != 0. )
-            derivative[jt] = (_CtBinned[jt] - _CtBinned[jt-1]) / dt;
-        else
-            derivative[jt] = _CtBinned[jt] / dt;
-    }
-    return derivative;
-}
-dVector simEngine::calculateConvolution(dVector tissue)
-{
-    int nTime = tissue.size();
-    dVector convolution;  convolution.fill(0.,nTime);
-    for (int jt=0; jt<nTime; jt++)
-    {
-        double dt = static_cast<double>(_durationBinSec[jt])/60.;
-        double time = dt * jt;  // probably need to shift by 1/2 bin
-        for ( int jtPrime=0; jtPrime<=jt; jtPrime++ )
-        { // integrate from 0 to current time in run (=iTime_run & time)
-            double timePrime = dt * jtPrime;
-            convolution[jt] += tissue[jtPrime] * qExp(-(_k3+_k4)*(time-timePrime)) * dt;
-        } // jtPrime
-    } // jt
-    return convolution;
-}
-double simEngine::getDurationScan()
-{
-    double duration=0.;
-    for (int jt=0; jt<_dtFine.size(); jt++)
-        duration += _dtFine[jt];
-    return duration;
-}
-double simEngine::getdk2a()
-{
-    // k2a = k2 / (1+_BP0)
-    // BP1 = BP0
-    double k2a_0 = _k2/(1.+_BP0);
-    double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
-    double k2a_1 = _k2/(1.+BP1);
-    double dk2a = k2a_1 - k2a_0;
-    return dk2a;
-}
-double simEngine::getdk2k3()
-{
-    double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
-    double DBP = _BP0 - BP1;
-    return - _k2 * DBP;  // don't use PET convention
-    /*
-    double k2k3_0 = _k2 * _BP0;
-    double k2k3_1 = _k2 * BP1;
-    double dk2k3 = k2k3_0 - k2k3_1;
-    return dk2k3/_k4;
-    */
 }

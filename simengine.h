@@ -43,6 +43,7 @@ private:
     double _k2Ref=1./2.5;
     // Target region: state
     double _k4=1./10.;
+    double _DV=1.;
     double _R1=1.;
     double _BP0=4.;     // BP = k3/koff = kon*Bavail0/koff
     // Challenge
@@ -59,7 +60,6 @@ private:
 
     // derived quantities //////////////////////////
     double _K1;    // K1 = R1 * K1_ref
-    double _k2;    // k2 = R1 * k2_ref
     double _k3;    // k3 = BP * koff
     // noise
     double _noiseRef=0.;
@@ -83,15 +83,6 @@ private:
     void addNoise(double noiseScale, dVector &downSampled);
     double GaussianRandomizer(double sigma, double cutoff);
 
-    // calculate analytical solutions
-    double integralOf(dVector tissue, int iTime);
-    dVector differentiateTissueVector();
-    dVector calculateConvolution(dVector tissue);
-
-    double baselineBasisFunction(int iPoly, double x);
-    double gammaVariateFunction(double time, double onset, double alpha, double tau);
-
-
 public:
     simEngine();
     void updateFineSamples();
@@ -101,8 +92,6 @@ public:
     void generateTargetTAC();
     void generateTargetSRTM();
     void generateTargetFRTM();
-    dVector FRTMOldAnalyticalSolution();
-    dVector FRTMNewAnalyticalSolution();
 
     // setters
     inline void setSRTM()                     {_SRTM = true;}
@@ -123,10 +112,10 @@ public:
     inline void setTau2Ref(double value)      {_k2Ref = 1./value;}
     inline void setk4(double value)           {_k4 = value;}
     inline void setTau4(double value)         {_k4 = 1./value;}
+    inline void setDV(double value)           {_DV = value;}
     inline void setR1(double value)           {_R1 = value;}
     inline void setBP0(double value)          {_BP0 = value;}
     inline void setK1(double value)           {_K1 = value;}
-    inline void setk2(double value)           {_k2 = value;}
     inline void setk3(double value)           {_k3 = value;}
     inline void setNoiseRef(double value)     {_noiseRef = value;}
     inline void setNoiseTar(double value)     {_noiseTar = value;}
@@ -161,13 +150,12 @@ public:
     inline double getTau2Ref()      {return 1./_k2Ref;}
     inline double getk4()           {return _k4;}
     inline double getTau4()         {return 1./_k4;}
+    inline double getDV()           {return _DV;}
     inline double getR1()           {return _R1;}
     inline double getBP0()          {return _BP0;}
     inline double getK1()           {return _K1;}
-    inline double getk2()           {return _k2;}
+    inline double getk2()           {return _R1 * _k2Ref / _DV;}
     inline double getk3()           {return _k3;}
-    inline double getk2a()          {return _k2/(1.+_BP0);}
-    inline double getk2k3()         {return _k2 * _k3;}  // or k2 * k4 * BPnd
     inline int getSamplesPerBin(int lBin) {return _numberSamplesPerBin[lBin];}
     inline double getDurationPerBin(int lBin) {return static_cast<double>(_durationBinSec[lBin])*60.;}
     inline double getDurationPerBinSec(int lBin) {return _durationBinSec[lBin];}
@@ -176,9 +164,6 @@ public:
     inline double getTimeFine(int iTime) {return _timeFine[iTime];}
     inline double getTimeCoarse(int iTime) {return _timeCoarse[iTime];}
     inline double getdtCoarse(int iTime) {return _dtCoarse[iTime];}
-    double getDurationScan();
-    double getdk2a();
-    double getdk2k3();
 
     inline double getNoiseRef()     {return _noiseRef;}
     inline double getNoiseTar()     {return _noiseTar;}
