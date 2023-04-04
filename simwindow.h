@@ -32,7 +32,7 @@ private:
     int _numberSimulationsPerThread = 1;
 
     dVector _BP0Vector; // [# BP0 values]
-    dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix; // [# BP0 values][nSimulations]
+    dMatrix _errBPndMatrix, _errChallMatrix, _tau2RefMatrix, _errTau4Matrix, _errDVMatrix; // [# BP0 values][nSimulations]
 
     dVector _tau4Vector;
     dMatrix _AICMatrix;
@@ -72,6 +72,7 @@ private:
     plotData *_plotErrChallVsBPnd; // vsBPnd page
     plotData *_plotTau2RefVsBPnd;  // vsBPnd page
     plotData *_plotErrk4VsBPnd;
+    plotData *_plotErrDVVsBPnd;
 
     plotData *_plotErrBPndOrChallVsTime;  // vs time page
 
@@ -138,16 +139,24 @@ private:
     QLineEdit *_ignoreString;
     QLineEdit *_tau2RefAnalysis;
     QLineEdit *_tau4Analysis;
+    QLineEdit *_DVAnalysis;
     QGroupBox *_analysisGroupBox;
     QLabel *_tau2RefAnalysisLabel;
     QLabel *_tau4AnalysisLabel;
+    QLabel *_DVAnalysisLabel;
     QCheckBox *_fitk4CheckBox;
+    QCheckBox *_fitDVCheckBox;
     QCheckBox *_fitChallenge;
+    QLineEdit *_parSearchStart;
+    QLineEdit *_parSearchEnd;
+    QLineEdit *_parSearchStep;
     // errors
     QLabel *_errorBPnd;
     QLabel *_errork2;
     QLabel *_errorR1;
     QLabel *_errorR1Label;
+    QLabel *_errorDV;
+    QLabel *_errorDVLabel;
     QLabel *_errorTau2Ref;
     QLabel *_errorTau2RefLabel;
     QLabel *_errorChallenge;
@@ -177,6 +186,7 @@ private:
     QCheckBox *_checkBoxBPndErrVsBPnd;
     QCheckBox *_checkBoxChallErrVsBPnd;
     QCheckBox *_checkBoxk4ErrGraph;
+    QCheckBox *_checkBoxDVErrGraph;
     QCheckBox *_checkBoxTau2RefGraph;
 
     // vsTime page
@@ -285,8 +295,13 @@ private slots:
     void changedIgnoreString();
     void changedTau2RefAnalysis();
     void changedTau4Analysis();
+    void changedDVAnalysis();
     void changedCheckBoxFitk4(bool state);
+    void changedCheckBoxFitDV(bool state);
     void changedCheckBoxChallenge(bool state);
+    void changedParSearchStart();
+    void changedParSearchEnd();
+    void changedParSearchStep();
 
     void changedBPndLow();
     void changedBPndHigh();
@@ -319,7 +334,8 @@ private slots:
 
 public slots:
     void updateLieDetectorProgress(int iProgress);
-    void finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4, double sigma2);
+    void finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref,
+                                          dMatrix errTau4, dMatrix errDV, double sigma2);
     void finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errChall, dMatrix AIC, double sigma2);
 };
 

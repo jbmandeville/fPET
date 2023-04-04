@@ -24,7 +24,7 @@ private:
 
 signals:
     void progresslieDetector(int iProgress);
-    void finishedlieDetector(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4, double sigma2);
+    void finishedlieDetector(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref, dMatrix errTau4, dMatrix errDV, double sigma2);
 };
 
 class lieDetectorTau4: public QObject, public QRunnable

@@ -587,13 +587,13 @@ void SimWindow::createSetupPage()
     connect(dragXAction,     SIGNAL(triggered(bool)), _plotPlasma, SLOT(setXZoom()));
     connect(dragYAction,     SIGNAL(triggered(bool)), _plotPlasma, SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotPlasma, SLOT(autoScale(bool)));
-    connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotPlasma, SLOT(setSelectPoints()));
+    connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotPlasma, SLOT(setSelectPoints(bool)));
 //    connect(crossCursorAct,  SIGNAL(triggered(bool)), _plotPlasma, SLOT(setSelectPoints()));
 
     connect(dragXAction,     SIGNAL(triggered(bool)), _plotRR, SLOT(setXZoom()));
     connect(dragYAction,     SIGNAL(triggered(bool)), _plotRR, SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotRR, SLOT(autoScale(bool)));
-    connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotRR, SLOT(setSelectPoints()));
+    connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotRR, SLOT(setSelectPoints(bool)));
 //    connect(crossCursorAct,  SIGNAL(triggered(bool)), _plotRR, SLOT(setSelectPoints()));
 
     connect(radioShowPlasma,   SIGNAL(clicked(bool)), this, SLOT(showPlasma()));
@@ -705,8 +705,10 @@ void SimWindow::changedModelType(int indexInBox)
     _radioShowAIC->setEnabled(_PETRTM.isForwardModel());
     _tau2RefAnalysisLabel->setVisible(_PETRTM.isRTM2());
     _tau2RefAnalysis->setVisible(_PETRTM.isRTM2());
-    _errorR1Label->setVisible(_PETRTM.isRTM3());
-    _errorR1->setVisible(_PETRTM.isRTM3());
+    _errorR1Label->setVisible(_PETRTM.isRTM3() || _PETRTM.isForwardModel());
+    _errorR1->setVisible(_PETRTM.isRTM3() || _PETRTM.isForwardModel());
+    _errorDVLabel->setVisible(_PETRTM.isForwardModel() && _PETRTM.getRTMModel() == RTM_fFRTM3DV);
+    _errorDV->setVisible(_PETRTM.isForwardModel() && _PETRTM.getRTMModel() == RTM_fFRTM3DV);
     _errorTau2RefLabel->setVisible(_PETRTM.isRTM3());
     _errorTau2Ref->setVisible(_PETRTM.isRTM3());
     if ( _PETRTM.isRTM2() )
@@ -725,6 +727,8 @@ void SimWindow::changedModelType(int indexInBox)
     }
     _tau4AnalysisLabel->setVisible( _PETRTM.isForwardModel() );
     _tau4Analysis->setVisible(      _PETRTM.isForwardModel() );
+    _DVAnalysisLabel->setVisible(   _PETRTM.isForwardModel() );
+    _DVAnalysis->setVisible(        _PETRTM.isForwardModel() );
 }
 
 void SimWindow::createTargetPage()
@@ -740,13 +744,6 @@ void SimWindow::createTargetPage()
     _TRStatusBar->setStyleSheet("color:blue");
     _plotTarget->setQCStatusBar(_TRStatusBar);
 //    _plotTarget->setMainPage(this);
-
-    connect(_plotTarget, SIGNAL(changedPointFromGraph(int,int,int)), _plotBasis,   SLOT(changePoint(int,int,int)));
-    connect(_plotTarget, SIGNAL(changedPointFromGraph(int,int,int)), _plotRR,      SLOT(changePoint(int,int,int)));
-    connect(_plotBasis,  SIGNAL(changedPointFromGraph(int,int,int)), _plotTarget,  SLOT(changePoint(int,int,int)));
-    connect(_plotBasis,  SIGNAL(changedPointFromGraph(int,int,int)), _plotRR,      SLOT(changePoint(int,int,int)));
-    connect(_plotRR,     SIGNAL(changedPointFromGraph(int,int,int)), _plotBasis,   SLOT(changePoint(int,int,int)));
-    connect(_plotRR,     SIGNAL(changedPointFromGraph(int,int,int)), _plotTarget,  SLOT(changePoint(int,int,int)));
 
     _plotTargetLayout = new QVBoxLayout();
     _plotTargetLayout->addWidget(_plotBasis->getPlotSurface());
@@ -838,6 +835,7 @@ void SimWindow::createTargetPage()
     QLabel *ignoreLabel     = new QLabel("Ignore points");
     _tau2RefAnalysisLabel   = new QLabel("Analysis 1/k2'");
     _tau4AnalysisLabel      = new QLabel("Analysis 1/k4");
+    _DVAnalysisLabel        = new QLabel("Analysis DV");
     _modelType = new QComboBox();
     _modelType->addItem("SRTM3");
     _modelType->addItem("SRTM2");
@@ -857,50 +855,78 @@ void SimWindow::createTargetPage()
     _weightType->addItem("Custom");
     _weightType->setToolTip("Set a weighting scheme for WLS");
     _ignoreString     = new QLineEdit();
-    _tau2RefAnalysis = new QLineEdit();
-    _tau4Analysis    = new QLineEdit();
+    _tau2RefAnalysis  = new QLineEdit();
+    _tau4Analysis     = new QLineEdit();
+    _DVAnalysis       = new QLineEdit();
     _ignoreString->setText("");
     _tau2RefAnalysis->setText(numberString.setNum(_simulator.getTau2Ref()));
     _tau4Analysis->setText(numberString.setNum(_simulator.getTau4()));
+    _DVAnalysis->setText(numberString.setNum(_simulator.getDV()));
     _tau2RefAnalysis->setFixedWidth(editTextSize);
     _tau4Analysis->setFixedWidth(editTextSize);
+    _DVAnalysis->setFixedWidth(editTextSize);
     _tau2RefAnalysisLabel->setVisible(false);
     _tau4AnalysisLabel->setVisible(false);
+    _DVAnalysisLabel->setVisible(false);
     _tau2RefAnalysis->setVisible(false);
     _tau4Analysis->setVisible(false);
+    _DVAnalysis->setVisible(false);
     connect(_modelType,  SIGNAL(currentIndexChanged(int)), this, SLOT(changedModelType(int)));
     connect(_weightType, SIGNAL(currentIndexChanged(int)), this, SLOT(changedWeightType(int)));
     _fitk4CheckBox = new QCheckBox("fit k4?");
     _fitk4CheckBox->setChecked(false);
-//    _fitk4CheckBox->setEnabled(false);  // xxx tmp
+    _fitDVCheckBox = new QCheckBox("fit DV?");
+    _fitDVCheckBox->setChecked(false);
     _fitChallenge = new QCheckBox("fit challenge?");
     _fitChallenge->setChecked(false);
+
+    _parSearchStart = new QLineEdit("");
+    _parSearchEnd   = new QLineEdit("");
+    _parSearchStep  = new QLineEdit("");
+    _parSearchStart->setVisible(false);
+    _parSearchEnd->setVisible(false);
+    _parSearchStep->setVisible(false);
+    connect(_parSearchStart,  SIGNAL(editingFinished()), this, SLOT(changedParSearchStart()));
+    connect(_parSearchEnd,    SIGNAL(editingFinished()), this, SLOT(changedParSearchEnd()));
+    connect(_parSearchStep,   SIGNAL(editingFinished()), this, SLOT(changedParSearchStep()));
+
 
     auto *analysisLayout = new QGridLayout();
     analysisLayout->addWidget(modelLabel,0,0);
     analysisLayout->addWidget(_modelType,0,1);
     analysisLayout->addWidget(_fitChallenge,1,0);
     analysisLayout->addWidget(_fitk4CheckBox,1,1);
-    analysisLayout->addWidget(weightLabel,2,0);
-    analysisLayout->addWidget(_weightType,2,1);
-    analysisLayout->addWidget(ignoreLabel,3,0);
-    analysisLayout->addWidget(_ignoreString,3,1);
-    analysisLayout->addWidget(_tau2RefAnalysisLabel,4,0);
-    analysisLayout->addWidget(_tau2RefAnalysis,4,1);
-    analysisLayout->addWidget(_tau4AnalysisLabel,5,0);
-    analysisLayout->addWidget(_tau4Analysis,5,1);
+    analysisLayout->addWidget(_fitDVCheckBox,1,2);
+
+    analysisLayout->addWidget(_parSearchStart,2,0);
+    analysisLayout->addWidget(_parSearchEnd,2,1);
+    analysisLayout->addWidget(_parSearchStep,2,2);
+
+    analysisLayout->addWidget(weightLabel,3,0);
+    analysisLayout->addWidget(_weightType,3,1);
+    analysisLayout->addWidget(ignoreLabel,4,0);
+    analysisLayout->addWidget(_ignoreString,4,1);
+    analysisLayout->addWidget(_tau2RefAnalysisLabel,5,0);
+    analysisLayout->addWidget(_tau2RefAnalysis,5,1);
+    analysisLayout->addWidget(_tau4AnalysisLabel,6,0);
+    analysisLayout->addWidget(_tau4Analysis,6,1);
+    analysisLayout->addWidget(_DVAnalysisLabel,7,0);
+    analysisLayout->addWidget(_DVAnalysis,7,1);
     _analysisGroupBox->setLayout(analysisLayout);
     analysisLayout->setSpacing(0);
     connect(_ignoreString,     SIGNAL(editingFinished()), this, SLOT(changedIgnoreString()));
     connect(_tau2RefAnalysis,  SIGNAL(editingFinished()), this, SLOT(changedTau2RefAnalysis()));
     connect(_tau4Analysis,     SIGNAL(editingFinished()), this, SLOT(changedTau4Analysis()));
+    connect(_DVAnalysis,       SIGNAL(editingFinished()), this, SLOT(changedDVAnalysis()));
     connect(_fitChallenge,     SIGNAL(toggled(bool)),     this, SLOT(changedCheckBoxChallenge(bool)));
     connect(_fitk4CheckBox,    SIGNAL(toggled(bool)),     this, SLOT(changedCheckBoxFitk4(bool)));
+    connect(_fitDVCheckBox,    SIGNAL(toggled(bool)),     this, SLOT(changedCheckBoxFitDV(bool)));
     // target region: errors
     auto *errorGroupBox = new QGroupBox("Target Region: Percentage Errors");
     QLabel *errorBPndLabel  = new QLabel("BPnd ");
     QLabel *errork2Label    = new QLabel("k2   ");
     _errorR1Label           = new QLabel("R1   ");
+    _errorDVLabel           = new QLabel("DV   ");
     _errorTau2RefLabel      = new QLabel("1/k2'");
     _errorChallengeLabel    = new QLabel("Challenge");
     _errork4Label           = new QLabel("1/k4");
@@ -908,6 +934,7 @@ void SimWindow::createTargetPage()
     _errorBPnd      = new QLabel();
     _errork2        = new QLabel();
     _errorR1        = new QLabel();
+    _errorDV        = new QLabel();
     _errorTau2Ref   = new QLabel();
     _errorChallenge = new QLabel();
     _errork4        = new QLabel();
@@ -925,12 +952,14 @@ void SimWindow::createTargetPage()
     errorLayout->addWidget(_errorR1,2,1);
     errorLayout->addWidget(_errorTau2RefLabel,3,0);
     errorLayout->addWidget(_errorTau2Ref,3,1);
-    errorLayout->addWidget(_errorChallengeLabel,4,0);
-    errorLayout->addWidget(_errorChallenge,4,1);
-    errorLayout->addWidget(_errork4Label,5,0);
-    errorLayout->addWidget(_errork4,5,1);
-    errorLayout->addWidget(_sigmaLabel,6,0);
-    errorLayout->addWidget(_sigma,6,1);
+    errorLayout->addWidget(_errorDVLabel,4,0);
+    errorLayout->addWidget(_errorDV,4,1);
+    errorLayout->addWidget(_errorChallengeLabel,5,0);
+    errorLayout->addWidget(_errorChallenge,5,1);
+    errorLayout->addWidget(_errork4Label,6,0);
+    errorLayout->addWidget(_errork4,6,1);
+    errorLayout->addWidget(_sigmaLabel,7,0);
+    errorLayout->addWidget(_sigma,7,1);
     errorGroupBox->setLayout(errorLayout);
     errorLayout->setSpacing(0);
 
@@ -1081,11 +1110,13 @@ void SimWindow::createSweepBPndPage()
     _plotErrChallVsBPnd = new plotData(5);
     _plotTau2RefVsBPnd  = new plotData(6);
     _plotErrk4VsBPnd    = new plotData(7);
+    _plotErrDVVsBPnd    = new plotData(8);
     auto *plotLayout = new QVBoxLayout();
     plotLayout->addWidget(_plotErrBPndVsBPnd->getPlotSurface());
     plotLayout->addWidget(_plotErrChallVsBPnd->getPlotSurface());
     plotLayout->addWidget(_plotTau2RefVsBPnd->getPlotSurface());
     plotLayout->addWidget(_plotErrk4VsBPnd->getPlotSurface());
+    plotLayout->addWidget(_plotErrDVVsBPnd->getPlotSurface());
     QString numberString;
     int editTextSize=80;
 
@@ -1152,11 +1183,13 @@ void SimWindow::createSweepBPndPage()
     _checkBoxChallErrVsBPnd = new QCheckBox("Challenge error");
     _checkBoxTau2RefGraph  = new QCheckBox("1/k2' (=R1/k2)");
     _checkBoxk4ErrGraph    = new QCheckBox("1/k4");
+    _checkBoxDVErrGraph    = new QCheckBox("DV");
     _sigma2Label = new QLabel("sigma2 = 0");
     _checkBoxBPndErrVsBPnd->setChecked(true);
     _checkBoxChallErrVsBPnd->setChecked(false);
     _checkBoxChallErrVsBPnd->setVisible(false);
     _checkBoxk4ErrGraph->setVisible(false);
+    _checkBoxDVErrGraph->setVisible(false);
     _checkBoxTau2RefGraph->setChecked(true);
     auto *checkGroupBox = new QGroupBox("Show or hide graphs");
     auto *checkLayout = new QVBoxLayout();
@@ -1164,12 +1197,14 @@ void SimWindow::createSweepBPndPage()
     checkLayout->addWidget(_checkBoxChallErrVsBPnd);
     checkLayout->addWidget(_checkBoxTau2RefGraph);
     checkLayout->addWidget(_checkBoxk4ErrGraph);
+    checkLayout->addWidget(_checkBoxDVErrGraph);
     checkLayout->addWidget(_sigma2Label);
     checkGroupBox->setLayout(checkLayout);
     connect(_checkBoxBPndErrVsBPnd,  SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
     connect(_checkBoxChallErrVsBPnd, SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
     connect(_checkBoxTau2RefGraph,  SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
     connect(_checkBoxk4ErrGraph,    SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
+    connect(_checkBoxDVErrGraph,    SIGNAL(toggled(bool)), this, SLOT(changedVersusBPndGraphs()));
 
     auto *rightLayout = new QVBoxLayout();
     rightLayout->addWidget(BPndGroupBox);
@@ -1217,6 +1252,9 @@ void SimWindow::createSweepBPndPage()
     connect(dragXAction,     SIGNAL(triggered(bool)), _plotErrk4VsBPnd,    SLOT(setXZoom()));
     connect(dragYAction,     SIGNAL(triggered(bool)), _plotErrk4VsBPnd,    SLOT(setYZoom()));
     connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotErrk4VsBPnd,    SLOT(autoScale(bool)));
+    connect(dragXAction,     SIGNAL(triggered(bool)), _plotErrDVVsBPnd,    SLOT(setXZoom()));
+    connect(dragYAction,     SIGNAL(triggered(bool)), _plotErrDVVsBPnd,    SLOT(setYZoom()));
+    connect(rescaleXYAction, SIGNAL(triggered(bool)), _plotErrDVVsBPnd,    SLOT(autoScale(bool)));
 
     clearBPndCurves();
     changedVersusBPndGraphs();
@@ -1236,7 +1274,6 @@ void SimWindow::setReferenceRegionForAnalysis()
         dMatrix refRegion; refRegion.resize(1);
         timeBinsSec[0] = _dtBinsSec;          // _dataTable[nColums]
         refRegion[0] = _dataTable[_dataRefRegion->currentIndex()];  // getYData(iCurve)
-        _PETRTM.setSmoothingScale(0.1);  // xxx temporary
         _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
     else
@@ -1259,6 +1296,11 @@ void SimWindow::setReferenceRegionForAnalysis()
         }
         _PETRTM.setReferenceRegion(timeBinsSec,refRegion);
     }
+
+    if ( _PETRTM.isForwardModel() )
+        _PETRTM.setSmoothingScale(0.5);
+    else
+        _PETRTM.setSmoothingScale(0.01);
 }
 
 void SimWindow::createSweepTau4Page()
@@ -1535,7 +1577,7 @@ void SimWindow::updatePlasmaGraph()
 {
     FUNC_ENTER;
     static int whichColor=0;
-    QColor colors[10] = {Qt::black, Qt::red, Qt::blue, Qt::green,
+    QColor colors[10] = {Qt::black, Qt::blue, Qt::red, Qt::green,
                          Qt::darkCyan, Qt::darkYellow, Qt::darkMagenta, Qt::darkRed, Qt::darkBlue, Qt::darkGreen};
 
     int index = _whichPlasmaPlot->currentIndex();
@@ -1636,7 +1678,7 @@ void SimWindow::addSimulationRR(plotData *whichPlot)
     FUNC_ENTER;
     whichPlot->addCurve(0,"RR: simulation");
     if ( whichPlot->getNumberCurves() == 1 )
-        whichPlot->setColor(Qt::red); // 1st curve
+        whichPlot->setColor(Qt::blue); // 1st curve
     else
         whichPlot->setColor(Qt::gray);
     whichPlot->setPointSize(5);
@@ -1656,7 +1698,7 @@ void SimWindow::addFitRR(plotData *whichPlot)
     FUNC_ENTER;
     whichPlot->addCurve(0,"RR: fit");
     if ( whichPlot->getNumberCurves() == 1 )
-        whichPlot->setColor(Qt::red); // 1st curve is red
+        whichPlot->setColor(Qt::blue); // 1st curve
     else
         whichPlot->setColor(Qt::gray); // 2nd curve is gray
     whichPlot->setPointSize(2);
@@ -1679,7 +1721,7 @@ void SimWindow::addDataCurveRR(plotData *whichPlot)
         qFatal("Fatal Error: the combo-box index exceeds the table index.");
     whichPlot->addCurve(0,"RR: ROI data");
     if ( whichPlot->getNumberCurves() == 1 )
-        whichPlot->setColor(Qt::red); // 1st curve
+        whichPlot->setColor(Qt::blue); // 1st curve
     else
         whichPlot->setColor(Qt::gray);
     whichPlot->setPointSize(5);
@@ -1697,7 +1739,7 @@ void SimWindow::addSimulationTarget()
     else
         _plotTarget->addCurve(0,"target");
     if ( _plotTarget->getNumberCurves() == 1 )
-        _plotTarget->setColor(Qt::red); // 1st curve
+        _plotTarget->setColor(Qt::blue); // 1st curve
     else
         _plotTarget->setColor(Qt::gray);
     _plotTarget->setLabelYAxis("TAC (e.g., kBq/ml)");
@@ -1741,7 +1783,7 @@ void SimWindow::addDataCurveTarget()
     {
         _plotTarget->addCurve(0,"target: ROI data");
         if ( _plotTarget->getNumberCurves() == 1 )
-            _plotTarget->setColor(Qt::red); // 1st curve
+            _plotTarget->setColor(Qt::blue); // 1st curve
         else
             _plotTarget->setColor(Qt::gray);
         _plotTarget->setPointSize(5);
@@ -1781,7 +1823,7 @@ void SimWindow::updateTargetGraph()
     FUNC_INFO << "add fit";
     _plotTarget->addCurve(0,"fit");
     _plotTarget->setLineThickness(2);
-    _plotTarget->setColor(Qt::blue);
+    _plotTarget->setColor(Qt::red);
     if ( _PETRTM.isForwardModel() )
     {
         for (int jt=0; jt<nTime; jt++)
@@ -1800,6 +1842,16 @@ void SimWindow::updateTargetGraph()
     for (int jt=0; jt<nTime; jt++)
         yTAC[jt] = _PETRTM.getReferenceRegion(false,0,jt).y;
     _plotTarget->setData(xTime,yTAC);
+
+    // add RR fit for fFRTM
+    if ( _PETRTM.isForwardModel() )
+    {
+        _plotTarget->addCurve(0,"RR fit");
+        _plotTarget->setColor(Qt::green);
+        for (int jt=0; jt<nTime; jt++)
+            yTAC[jt] = _PETRTM.getReferenceRegion(true,0,jt).y;
+        _plotTarget->setData(xTime,yTAC);
+    }
 
     _plotTarget->conclude(0,true);
     _plotTarget->plotDataAndFit(true);
@@ -1995,10 +2047,18 @@ void SimWindow::analyzeTAC()
     truth = _simulator.getR1();
     guess = _PETRTM.getR1InRun(0).x;
     _errorR1->setText(analyzeString(truth,guess));
+    FUNC_INFO << "** R1" << truth << guess;
+
     // tau2Ref
     truth = _simulator.getTau2Ref();
     guess = _PETRTM.getTau2RefInRun(0);
     _errorTau2Ref->setText(analyzeString(truth,guess));
+
+    // DV
+    truth = _simulator.getDV();
+    guess = _PETRTM.getDVInRun(0);
+    _errorDV->setText(analyzeString(truth,guess));
+    FUNC_INFO << "** DV" << truth << guess;
 
     // challenge
     if ( _fitChallenge->isChecked() )
@@ -2522,11 +2582,54 @@ void SimWindow::changedTau4Analysis()
     if ( ok )
     {
         _PETRTM.setTau4(0,value);
-        _PETRTM._simulator[0].setTau4(value);
         updateAllGraphs();
     }
     else
         _tau4Analysis->setText(stringEntered.setNum(_PETRTM.getTau4InRun(0)));
+}
+void SimWindow::changedDVAnalysis()
+{
+    FUNC_ENTER;
+    QString stringEntered = _DVAnalysis->text();
+    bool ok;
+    double value = stringEntered.toDouble(&ok);
+    if ( ok )
+    {
+        _PETRTM.setDV(0,value);
+        updateAllGraphs();
+    }
+    else
+        _DVAnalysis->setText(stringEntered.setNum(_PETRTM.getDVInRun(0)));
+}
+void SimWindow::changedParSearchStart()
+{
+    QString stringEntered = _parSearchStart->text();
+    bool ok;
+    double value = stringEntered.toDouble(&ok);
+    if ( ok && _fitk4CheckBox->isChecked() )
+        _PETRTM.setSearchParTau4_X(value);
+    else if ( ok && _fitDVCheckBox->isChecked() )
+        _PETRTM.setSearchParDV_X(value);
+}
+void SimWindow::changedParSearchEnd()
+{
+    QString stringEntered = _parSearchEnd->text();
+    bool ok;
+    double value = stringEntered.toDouble(&ok);
+    if ( ok && _fitk4CheckBox->isChecked() )
+        _PETRTM.setSearchParTau4_Y(value);
+    else if ( ok && _fitDVCheckBox->isChecked() )
+        _PETRTM.setSearchParDV_Y(value);
+}
+void SimWindow::changedParSearchStep()
+{
+    QString stringEntered = _parSearchStep->text();
+    bool ok;
+    double value = stringEntered.toDouble(&ok);
+    if ( ok && _fitk4CheckBox->isChecked() )
+        _PETRTM.setSearchParTau4_Z(value);
+    else if ( ok && _fitDVCheckBox->isChecked() )
+        _PETRTM.setSearchParDV_Z(value);
 }
 void SimWindow::changedCheckBoxFitk4(bool state)
 {
@@ -2535,8 +2638,44 @@ void SimWindow::changedCheckBoxFitk4(bool state)
     _errork4->setVisible(state);
     _checkBoxk4ErrGraph->setChecked(state);
     _checkBoxk4ErrGraph->setVisible(state);
-//    clearTimeCurves();
+    _checkBoxDVErrGraph->setChecked(!state);
+    _checkBoxDVErrGraph->setVisible(!state);
+
+    dPoint3D parSearch = _PETRTM.getSearchParTau4();
+    QString number;
+    _parSearchStart->setText(number.setNum(parSearch.x));
+    _parSearchEnd->setText(number.setNum(parSearch.y));
+    _parSearchStep->setText(number.setNum(parSearch.z));
+    _parSearchStart->setVisible(state);
+    _parSearchEnd->setVisible(state);
+    _parSearchStep->setVisible(state);
+
+    //    clearTimeCurves();
     _PETRTM.setFitk4(state);
+    _PETRTM.setPrepared(false);
+    updateAllGraphs();
+}
+void SimWindow::changedCheckBoxFitDV(bool state)
+{
+    FUNC_ENTER;
+    _errorDVLabel->setVisible(state);
+    _errorDV->setVisible(state);
+    _checkBoxDVErrGraph->setChecked(state);
+    _checkBoxDVErrGraph->setVisible(state);
+    _checkBoxk4ErrGraph->setChecked(!state);
+    _checkBoxk4ErrGraph->setVisible(!state);
+
+    dPoint3D parSearch = _PETRTM.getSearchParDV();
+    QString number;
+    _parSearchStart->setText(number.setNum(parSearch.x));
+    _parSearchEnd->setText(number.setNum(parSearch.y));
+    _parSearchStep->setText(number.setNum(parSearch.z));
+    _parSearchStart->setVisible(state);
+    _parSearchEnd->setVisible(state);
+    _parSearchStep->setVisible(state);
+
+//    clearTimeCurves();
+    _PETRTM.setFitDV(state);
     _PETRTM.setPrepared(false);
     updateAllGraphs();
 }
@@ -2662,6 +2801,7 @@ void SimWindow::changedVersusBPndGraphs()
     _plotErrChallVsBPnd->getPlotSurface()->setVisible(_checkBoxChallErrVsBPnd->isChecked());
     _plotTau2RefVsBPnd->getPlotSurface()->setVisible(_checkBoxTau2RefGraph->isChecked());
     _plotErrk4VsBPnd->getPlotSurface()->setVisible(_checkBoxk4ErrGraph->isChecked());
+    _plotErrDVVsBPnd->getPlotSurface()->setVisible(_checkBoxDVErrGraph->isChecked());
 }
 void SimWindow::changedVersusTau4Graphs()
 {
@@ -2701,6 +2841,12 @@ void SimWindow::clearBPndCurves()
     _plotErrk4VsBPnd->setLabelYAxis("1/k4");
     _plotErrk4VsBPnd->plotDataAndFit(true);
     _plotErrk4VsBPnd->setXRange(xRange);
+
+    _plotErrDVVsBPnd->init();
+    _plotErrDVVsBPnd->setLabelXAxis("BPnd");
+    _plotErrDVVsBPnd->setLabelYAxis("DV");
+    _plotErrDVVsBPnd->plotDataAndFit(true);
+    _plotErrDVVsBPnd->setXRange(xRange);
 }
 
 void SimWindow::clearTau4Curves()
@@ -2866,7 +3012,7 @@ void SimWindow::calculateBPndCurves()
     dMatrix tissueVector;   tissueVector.resize(1); tissueVector[0].resize(nTime);
     dMatrix fitVector;      fitVector.resize(1);    fitVector[0].resize(nTime);
 
-    dVector xVector, errBPnd, errChall, tau2Ref, errTau4, errBPndRTM2, errChallRTM2;
+    dVector xVector, errBPnd, errChall, tau2Ref, errTau4, errDV, errBPndRTM2, errChallRTM2;
     double sigma2Sum=0.;
 
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
@@ -2907,6 +3053,13 @@ void SimWindow::calculateBPndCurves()
             guess = _PETRTM.getTau4InRun(0);
             FUNC_INFO << "** tau4 **" << truth << guess;
             errTau4.append(percentageError(guess,truth));
+        }
+        else if ( _PETRTM.getFitDV() )
+        {
+            truth = _simulator.getDV();
+            guess = _PETRTM.getDVInRun(0);
+            FUNC_INFO << "** DV **" << truth << guess;
+            errDV.append(percentageError(guess,truth));
         }
 
         // update the tau2Ref value
@@ -2961,18 +3114,19 @@ void SimWindow::calculateBPndCurves()
     _plotErrk4VsBPnd->setPointSize(5);
     _plotErrk4VsBPnd->setColor(colors[iColor]);
 
+    _plotErrDVVsBPnd->addCurve(0,"DV");
+    _plotErrDVVsBPnd->setPointSize(5);
+    _plotErrDVVsBPnd->setColor(colors[iColor]);
+
     _plotErrBPndVsBPnd->setData(xVector,errBPnd);
     _plotErrChallVsBPnd->setData(xVector,errChall);
     bool calculateTau2Ref = !_PETRTM.isRTM2() || _checkBoxTau2RefGraph->isChecked();
     if ( calculateTau2Ref )
         _plotTau2RefVsBPnd->setData(xVector,tau2Ref);
     if ( _PETRTM.getFitk4() )
-    {
-//        if ( _PETRTM.isForwardModel() && _PETRTM.isRTM3() )
-//            _plotErrk4VsBPnd->setData(_tau4Vector,_AICVector);
-//        else
-            _plotErrk4VsBPnd->setData(xVector,errTau4);
-    }
+        _plotErrk4VsBPnd->setData(xVector,errTau4);
+    else if ( _PETRTM.getFitDV() )
+        _plotErrDVVsBPnd->setData(xVector,errDV);
 
     if ( _PETRTM.isRTM2() && _checkBoxTau2RefGraph->isChecked() )
     { // add a new curves to the two error plots
@@ -2992,11 +3146,13 @@ void SimWindow::calculateBPndCurves()
     _plotErrChallVsBPnd->conclude(0,true);
     _plotTau2RefVsBPnd->conclude(0,true);
     _plotErrk4VsBPnd->conclude(0,true);
+    _plotErrDVVsBPnd->conclude(0,true);
 
     _plotErrBPndVsBPnd->plotDataAndFit(true);
     _plotErrChallVsBPnd->plotDataAndFit(true);
     _plotTau2RefVsBPnd->plotDataAndFit(true);
     _plotErrk4VsBPnd->plotDataAndFit(true);
+    _plotErrDVVsBPnd->plotDataAndFit(true);
 }
 
 double SimWindow::bestTau2RefForRTM2()
@@ -3133,8 +3289,8 @@ void SimWindow::calculateTau4CurvesInThreads()
     {
         simSegment[jThread] = new lieDetectorTau4(_numberSimulationsPerThread, _tau4Vector, _simulator, _PETRTM);
         connect(simSegment[jThread], SIGNAL(progressLieDetector(int)), this, SLOT(updateLieDetectorProgress(int)));
-        connect(simSegment[jThread], SIGNAL(finishedLieDetector(dMatrix,dMatrix,dMatrix,double)),
-                this,SLOT(finishedLieDetectorTau4OneThread(dMatrix,dMatrix,dMatrix,double)));
+        connect(simSegment[jThread], SIGNAL(finishedLieDetector(dMatrix,dMatrix,dMatrix,dMatrix,double)),
+                this,SLOT(finishedLieDetectorTau4OneThread(dMatrix,dMatrix,dMatrix,dMatrix,double)));
         QThreadPool::globalInstance()->start(simSegment[jThread]);
     }
 }
@@ -3147,7 +3303,7 @@ void SimWindow::calculateBPndCurvesInThreads()
     _BP0Vector.clear();
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
         _BP0Vector.append(BP0);
-    _errBPndMatrix.clear(); _errChallMatrix.clear(); _tau2RefMatrix.clear(); _errTau4Matrix.clear();
+    _errBPndMatrix.clear(); _errChallMatrix.clear(); _tau2RefMatrix.clear(); _errTau4Matrix.clear(); _errDVMatrix.clear();
 
     /////////////////////////////////////////////////////////
     // Create the average volume.
@@ -3158,8 +3314,8 @@ void SimWindow::calculateBPndCurvesInThreads()
     {
         simSegment[jThread] = new lieDetectorBPnd(_numberSimulationsPerThread, _BP0Vector, _simulator, _PETRTM);
         connect(simSegment[jThread], SIGNAL(progresslieDetector(int)), this, SLOT(updateLieDetectorProgress(int)));
-        connect(simSegment[jThread], SIGNAL(finishedlieDetector(dMatrix,dMatrix,dMatrix,dMatrix,double)),
-                this,SLOT(finishedLieDetectorBPndOneThread(dMatrix,dMatrix,dMatrix,dMatrix,double)));
+        connect(simSegment[jThread], SIGNAL(finishedlieDetector(dMatrix,dMatrix,dMatrix,dMatrix,dMatrix,double)),
+                this,SLOT(finishedLieDetectorBPndOneThread(dMatrix,dMatrix,dMatrix,dMatrix,dMatrix,double)));
         QThreadPool::globalInstance()->start(simSegment[jThread]);
     }
 }
@@ -3181,7 +3337,7 @@ void SimWindow::updateLieDetectorProgress(int iProgress)
 }
 
 void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errChall,
-                                                 dMatrix tau2Ref, dMatrix errTau4,
+                                                 dMatrix tau2Ref, dMatrix errTau4, dMatrix errDV,
                                                  double sigma2)
 {
     FUNC_ENTER;
@@ -3199,7 +3355,7 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
     if ( _errBPndMatrix.size() == 0 )
     {
         _errBPndMatrix.resize(nBP0Values); _errChallMatrix.resize(nBP0Values);
-        _tau2RefMatrix.resize(nBP0Values); _errTau4Matrix.resize(nBP0Values);
+        _tau2RefMatrix.resize(nBP0Values); _errTau4Matrix.resize(nBP0Values);  _errDVMatrix.resize(nBP0Values);
     }
     for (int jValue=0; jValue<nBP0Values; jValue++)
     {
@@ -3210,6 +3366,7 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
             _errChallMatrix[jValue].append(errChall[jValue][jSample]);
             _tau2RefMatrix[jValue].append(tau2Ref[jValue][jSample]);
             _errTau4Matrix[jValue].append(errTau4[jValue][jSample]);
+            _errDVMatrix[jValue].append(errDV[jValue][jSample]);
         }
     }
     mutex.unlock();
@@ -3218,6 +3375,7 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
     sigma2Sum += sigma2;
     if ( nThreadsFinished == _nThreads )
     {
+        qInfo() << "all threads finished";
         _progressBar->reset();
         _progressBar->setMaximum(1);  // indicates that the bar is available
         sigma2Sum /= static_cast<double>(_nThreads);
@@ -3300,7 +3458,7 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
 
     FUNC_INFO << "nSamples" << nSamples;
 
-    dVector errBP, errChall, tau2Ref, errTau4, errBPSEM, errChallSEM, tau2RefSEM, errTau4SEM;
+    dVector errBP, errChall, tau2Ref, errTau4, errDV, errBPSEM, errChallSEM, tau2RefSEM, errTau4SEM, errDVSEM;
     // determine the means
     for (int jValue=0; jValue<nBP0Values; jValue++)
     {
@@ -3310,11 +3468,13 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
         errChall.append(calculateMean(_errChallMatrix[jValue]));
         tau2Ref.append(calculateMean(_tau2RefMatrix[jValue]));
         errTau4.append(calculateMean(_errTau4Matrix[jValue]));
+        errDV.append(calculateMean(_errDVMatrix[jValue]));
 
         errBPSEM.append(calculateStDev(errBP[jValue],       _errBPndMatrix[jValue])  / qSqrt(nSamples));
         errChallSEM.append(calculateStDev(errChall[jValue], _errChallMatrix[jValue]) / qSqrt(nSamples));
         tau2RefSEM.append(calculateStDev(tau2Ref[jValue],   _tau2RefMatrix[jValue])  / qSqrt(nSamples));
         errTau4SEM.append(calculateStDev(errTau4[jValue],   _errTau4Matrix[jValue])  / qSqrt(nSamples));
+        errDVSEM.append(calculateStDev(errDV[jValue],       _errDVMatrix[jValue])    / qSqrt(nSamples));
     }
 
     // restore the value of BPnd in simulator, plus regenerate graphs
@@ -3347,6 +3507,11 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
     _plotErrk4VsBPnd->setColor(colors[iColor]);
     _plotErrk4VsBPnd->setErrorBars(1);
 
+    _plotErrDVVsBPnd->addCurve(0,"DV");
+    _plotErrDVVsBPnd->setPointSize(5);
+    _plotErrDVVsBPnd->setColor(colors[iColor]);
+    _plotErrDVVsBPnd->setErrorBars(1);
+
     dVector xVector;
     for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
         xVector.append(BP0);
@@ -3359,16 +3524,20 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
         _plotTau2RefVsBPnd->setData(_BP0Vector,tau2Ref,tau2RefSEM);
     if ( _PETRTM.getFitk4() )
         _plotErrk4VsBPnd->setData(_BP0Vector,errTau4,errTau4SEM);
+    else if ( _PETRTM.getFitDV() )
+        _plotErrDVVsBPnd->setData(_BP0Vector,errDV,errDVSEM);
 
     _plotErrBPndVsBPnd->conclude(0,true);
     _plotErrChallVsBPnd->conclude(0,true);
     _plotTau2RefVsBPnd->conclude(0,true);
     _plotErrk4VsBPnd->conclude(0,true);
+    _plotErrDVVsBPnd->conclude(0,true);
 
     _plotErrBPndVsBPnd->plotDataAndFit(true);
     _plotErrChallVsBPnd->plotDataAndFit(true);
     _plotTau2RefVsBPnd->plotDataAndFit(true);
     _plotErrk4VsBPnd->plotDataAndFit(true);
+    _plotErrDVVsBPnd->plotDataAndFit(true);
 
     _progressBar->reset();
 }

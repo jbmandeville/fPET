@@ -28,12 +28,14 @@ void lieDetectorBPnd::run()
     double tau4Guess = _PETRTM._simulator[0].getTau4Nominal();
     if ( tau4Guess == 0. ) tau4Guess = 10.;
 
-    dMatrix errBPnd, errChall, tau2Ref, errTau4;
-    errBPnd.resize(nBPValues);   errChall.resize(nBPValues);  tau2Ref.resize(nBPValues);  errTau4.resize(nBPValues);
+    dMatrix errBPnd, errChall, tau2Ref, errTau4, errDV;
+    errBPnd.resize(nBPValues);   errChall.resize(nBPValues);  tau2Ref.resize(nBPValues);
+    errTau4.resize(nBPValues);   errDV.resize(nBPValues);
     double sigma2Sum = 0.;
     for (int jBP=0; jBP<nBPValues; jBP++)
     {
-        errBPnd[jBP].resize(_numberSamples); errChall[jBP].resize(_numberSamples); tau2Ref[jBP].resize(_numberSamples); errTau4[jBP].resize(_numberSamples);
+        errBPnd[jBP].resize(_numberSamples); errChall[jBP].resize(_numberSamples);
+        tau2Ref[jBP].resize(_numberSamples); errTau4[jBP].resize(_numberSamples);  errDV[jBP].resize(_numberSamples);
         double BP0 = _BP0Values[jBP];
         _simulator.setBP0(BP0);
         for (int jSample=0; jSample<_numberSamples; jSample++)
@@ -67,6 +69,11 @@ void lieDetectorBPnd::run()
             guess = _PETRTM.getTau4InRun(0);
             errTau4[jBP][jSample] = percentageError(guess,truth);
 
+            // update the DV error
+            truth = _simulator.getDV();
+            guess = _PETRTM.getDVInRun(0);
+            errDV[jBP][jSample] = percentageError(guess,truth);
+
             // update the tau2Ref value
             if ( !_PETRTM.isRTM2() )
                 guess = _PETRTM.getTau2RefInRun(0);
@@ -76,7 +83,7 @@ void lieDetectorBPnd::run()
         }
     }
     sigma2Sum /= static_cast<double>(nBPValues*_numberSamples);
-    emit finishedlieDetector(errBPnd, errChall, tau2Ref, errTau4, sigma2Sum);
+    emit finishedlieDetector(errBPnd, errChall, tau2Ref, errTau4, errDV, sigma2Sum);
     FUNC_EXIT;
 }
 
