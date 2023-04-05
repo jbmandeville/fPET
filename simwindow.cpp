@@ -3275,10 +3275,7 @@ void SimWindow::calculateTau4CurvesInThreads()
     FUNC_ENTER;
     updateLieDetectorProgress(10*_nThreads);
 
-    _tau4Vector.clear();
-    for (double tau4=0; tau4<=_tau4HighValue; tau4 += _tau4StepValue)
-        _tau4Vector.append(tau4);
-    _errBPndMatrix.clear(); _errChallMatrix.clear();  _AICMatrix.clear();
+    clearErrorMatrices(false);
 
     /////////////////////////////////////////////////////////
     // Create the average volume.
@@ -3295,15 +3292,50 @@ void SimWindow::calculateTau4CurvesInThreads()
     }
 }
 
+void SimWindow::clearErrorMatrices(bool sweepBP)
+{
+    _BP0Vector.clear();
+    _tau4Vector.clear();
+
+    _errBPndMatrix.clear();
+    _errChallMatrix.clear();
+    _errTau4Matrix.clear();
+    _errDVMatrix.clear();
+    _tau2RefMatrix.clear();
+    _AICMatrix.clear();
+
+    if ( sweepBP )
+    {
+        for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
+            _BP0Vector.append(BP0);
+        int nBP0Values = _BP0Vector.size();
+        _errBPndMatrix.resize(nBP0Values);
+        _errChallMatrix.resize(nBP0Values);
+        _errTau4Matrix.resize(nBP0Values);
+        _errDVMatrix.resize(nBP0Values);
+        _tau2RefMatrix.resize(nBP0Values);
+        _AICMatrix.resize(nBP0Values);
+    }
+    else
+    {
+        for (double tau4=0; tau4<=_tau4HighValue; tau4 += _tau4StepValue)
+            _tau4Vector.append(tau4);
+        int nTau4Values = _tau4Vector.size();
+        _errBPndMatrix.resize(nTau4Values);
+        _errChallMatrix.resize(nTau4Values);
+        _errTau4Matrix.resize(nTau4Values);
+        _errDVMatrix.resize(nTau4Values);
+        _tau2RefMatrix.resize(nTau4Values);
+        _AICMatrix.resize(nTau4Values);
+    }
+}
+
 void SimWindow::calculateBPndCurvesInThreads()
 {
     FUNC_ENTER;
     updateLieDetectorProgress(10*_nThreads);
 
-    _BP0Vector.clear();
-    for (double BP0=_BPndLowValue; BP0<=_BPndHighValue; BP0 += _BPndStepValue)
-        _BP0Vector.append(BP0);
-    _errBPndMatrix.clear(); _errChallMatrix.clear(); _tau2RefMatrix.clear(); _errTau4Matrix.clear(); _errDVMatrix.clear();
+    clearErrorMatrices(true);
 
     /////////////////////////////////////////////////////////
     // Create the average volume.
@@ -3340,6 +3372,7 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
                                                  dMatrix tau2Ref, dMatrix errTau4, dMatrix errDV,
                                                  double sigma2)
 {
+    qInfo() << "finishedLieDetectorBPndOneThread enter";
     FUNC_ENTER;
     static int nThreadsFinished=0;
     static double sigma2Sum=0.;
@@ -3352,11 +3385,6 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
 
     QMutex mutex;
     mutex.lock();
-    if ( _errBPndMatrix.size() == 0 )
-    {
-        _errBPndMatrix.resize(nBP0Values); _errChallMatrix.resize(nBP0Values);
-        _tau2RefMatrix.resize(nBP0Values); _errTau4Matrix.resize(nBP0Values);  _errDVMatrix.resize(nBP0Values);
-    }
     for (int jValue=0; jValue<nBP0Values; jValue++)
     {
         FUNC_INFO << "** jValue errtau4" << jValue << errTau4[jValue][0];
@@ -3384,6 +3412,7 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
         sigma2Sum = 0.;
         finishedLieDetectorBPndAllThreads();
     }
+    qInfo() << "finishedLieDetectorBPndOneThread exit";
 }
 
 void SimWindow::finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errChall, dMatrix AIC, double sigma2)
@@ -3400,11 +3429,6 @@ void SimWindow::finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errCha
 
     QMutex mutex;
     mutex.lock();
-    if ( _errBPndMatrix.size() == 0 )
-    {
-        _errBPndMatrix.resize(nTau4Values); _errChallMatrix.resize(nTau4Values);
-        _AICMatrix.resize(nTau4Values);
-    }
     for (int jValue=0; jValue<nTau4Values; jValue++)
     {
         for ( int jSample=0; jSample<nSamples; jSample++)
@@ -3452,6 +3476,7 @@ double SimWindow::calculateStDev(double mean, dVector vec)
 
 void SimWindow::finishedLieDetectorBPndAllThreads()
 {
+    qInfo() << "finishedLieDetectorBPndAllThreads enter";
     FUNC_ENTER;
     int nBP0Values = _BP0Vector.size();
     int nSamples   = _nThreads * _numberSimulationsPerThread;
@@ -3540,6 +3565,7 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
     _plotErrDVVsBPnd->plotDataAndFit(true);
 
     _progressBar->reset();
+    qInfo() << "finishedLieDetectorBPndAllThreads exit";
 }
 
 void SimWindow::finishedLieDetectorTau4AllThreads()

@@ -207,6 +207,7 @@ private:
     void createSweepBPndPage();
     void createSweepTimePage();
     void createSweepTau4Page();
+    void clearErrorMatrices(bool sweepBP);
 
     void updatePlasmaGraph();
     void updateBasisGraph();
