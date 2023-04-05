@@ -3481,25 +3481,26 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
     int nBP0Values = _BP0Vector.size();
     int nSamples   = _nThreads * _numberSimulationsPerThread;
 
-    FUNC_INFO << "nSamples" << nSamples;
+    qInfo() << "nSamples" << nSamples;
 
-    dVector errBP, errChall, tau2Ref, errTau4, errDV, errBPSEM, errChallSEM, tau2RefSEM, errTau4SEM, errDVSEM;
+    dVector errBP, errChall, tau2Ref, errTau4, errDV, errBPSTDEV, errChallSTDEV, tau2RefSTDEV, errTau4STDEV, errDVSTDEV;
     // determine the means
     for (int jValue=0; jValue<nBP0Values; jValue++)
     {
         FUNC_INFO << "** errTau4Matrix" << _errTau4Matrix[jValue];
 
+        qInfo() << "calc mean using" << _errBPndMatrix[jValue].size() << "samples for value" << jValue;
         errBP.append(calculateMean(_errBPndMatrix[jValue]));
         errChall.append(calculateMean(_errChallMatrix[jValue]));
         tau2Ref.append(calculateMean(_tau2RefMatrix[jValue]));
         errTau4.append(calculateMean(_errTau4Matrix[jValue]));
         errDV.append(calculateMean(_errDVMatrix[jValue]));
 
-        errBPSEM.append(calculateStDev(errBP[jValue],       _errBPndMatrix[jValue])  / qSqrt(nSamples));
-        errChallSEM.append(calculateStDev(errChall[jValue], _errChallMatrix[jValue]) / qSqrt(nSamples));
-        tau2RefSEM.append(calculateStDev(tau2Ref[jValue],   _tau2RefMatrix[jValue])  / qSqrt(nSamples));
-        errTau4SEM.append(calculateStDev(errTau4[jValue],   _errTau4Matrix[jValue])  / qSqrt(nSamples));
-        errDVSEM.append(calculateStDev(errDV[jValue],       _errDVMatrix[jValue])    / qSqrt(nSamples));
+        errBPSTDEV.append(calculateStDev(errBP.last(),       _errBPndMatrix[jValue]));
+        errChallSTDEV.append(calculateStDev(errChall.last(), _errChallMatrix[jValue]));
+        tau2RefSTDEV.append(calculateStDev(tau2Ref.last(),   _tau2RefMatrix[jValue]));
+        errTau4STDEV.append(calculateStDev(errTau4.last(),   _errTau4Matrix[jValue]));
+        errDVSTDEV.append(calculateStDev(errDV.last(),       _errDVMatrix[jValue]));
     }
 
     // restore the value of BPnd in simulator, plus regenerate graphs
@@ -3543,14 +3544,14 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
 
     FUNC_INFO << "** set data" << _BP0Vector << errTau4;
 
-    _plotErrBPndVsBPnd->setData(_BP0Vector,errBP,errBPSEM);
-    _plotErrChallVsBPnd->setData(_BP0Vector,errChall,errChallSEM);
+    _plotErrBPndVsBPnd->setData(_BP0Vector,errBP,errBPSTDEV);
+    _plotErrChallVsBPnd->setData(_BP0Vector,errChall,errChallSTDEV);
     if ( !_PETRTM.isRTM2() )
-        _plotTau2RefVsBPnd->setData(_BP0Vector,tau2Ref,tau2RefSEM);
+        _plotTau2RefVsBPnd->setData(_BP0Vector,tau2Ref,tau2RefSTDEV);
     if ( _PETRTM.getFitk4() )
-        _plotErrk4VsBPnd->setData(_BP0Vector,errTau4,errTau4SEM);
+        _plotErrk4VsBPnd->setData(_BP0Vector,errTau4,errTau4STDEV);
     else if ( _PETRTM.getFitDV() )
-        _plotErrDVVsBPnd->setData(_BP0Vector,errDV,errDVSEM);
+        _plotErrDVVsBPnd->setData(_BP0Vector,errDV,errDVSTDEV);
 
     _plotErrBPndVsBPnd->conclude(0,true);
     _plotErrChallVsBPnd->conclude(0,true);
@@ -3576,7 +3577,7 @@ void SimWindow::finishedLieDetectorTau4AllThreads()
 
     FUNC_INFO << "nSamples" << nSamples;
 
-    dVector errBP, errChall, AIC, errBPSEM, errChallSEM, AICSEM;
+    dVector errBP, errChall, AIC, errBPSTDEV, errChallSTDEV, AICSTDEV;
     // determine the means
     for (int jValue=0; jValue<nTau4Values; jValue++)
     {
@@ -3586,9 +3587,9 @@ void SimWindow::finishedLieDetectorTau4AllThreads()
         errChall.append(calculateMean(_errChallMatrix[jValue]));
         AIC.append(calculateMean(_AICMatrix[jValue]));
 
-        errBPSEM.append(calculateStDev(errBP[jValue],       _errBPndMatrix[jValue])  / qSqrt(nSamples));
-        errChallSEM.append(calculateStDev(errChall[jValue], _errChallMatrix[jValue]) / qSqrt(nSamples));
-        AICSEM.append(calculateStDev(AIC[jValue],           _AICMatrix[jValue])      / qSqrt(nSamples));
+        errBPSTDEV.append(calculateStDev(errBP[jValue],       _errBPndMatrix[jValue]));
+        errChallSTDEV.append(calculateStDev(errChall[jValue], _errChallMatrix[jValue]));
+        AICSTDEV.append(calculateStDev(AIC[jValue],           _AICMatrix[jValue]));
     }
 
     // restore the value of BPnd in simulator, plus regenerate graphs
@@ -3618,9 +3619,9 @@ void SimWindow::finishedLieDetectorTau4AllThreads()
     for (double tau4=0; tau4<=_tau4HighValue; tau4 += _tau4StepValue)
         xVector.append(tau4);
 
-    _plotErrBPndVsTau4->setData(_tau4Vector,errBP,errBPSEM);
-    _plotErrChallVsTau4->setData(_tau4Vector,errChall,errChallSEM);
-    _plotAICVsTau4->setData(_tau4Vector,AIC,AICSEM);
+    _plotErrBPndVsTau4->setData(_tau4Vector,errBP,errBPSTDEV);
+    _plotErrChallVsTau4->setData(_tau4Vector,errChall,errChallSTDEV);
+    _plotAICVsTau4->setData(_tau4Vector,AIC,AICSTDEV);
 
     _plotErrBPndVsTau4->conclude(0,true);
     _plotErrChallVsTau4->conclude(0,true);
