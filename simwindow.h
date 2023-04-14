@@ -47,6 +47,17 @@ private:
     QStringList _validBinTimeName = {"t","time","time-point","time_point", "timePoint",
                                      "frame-time","frame_time","frameTime"};
 
+    struct global_fit
+    {
+        dVector tau4Vector;
+        dVector tau2RefVector;
+        dVector DVVector;
+        dVector AICVector1D;
+        dMatrix3 AICMatrix;
+        double  AICSRTM;
+    } _globalFit;
+
+
     QTabWidget *_tabTimeSpace;
     QWidget *_setupPage;
     QWidget *_targetPage;
@@ -67,6 +78,7 @@ private:
 
     plotData *_plotBasis;
     plotData *_plotTarget;
+    plotData *_plotAIC;
 
     plotData *_plotErrBPndVsBPnd;  // vsBPnd page
     plotData *_plotErrChallVsBPnd; // vsBPnd page
@@ -83,8 +95,6 @@ private:
     // setup page
     QComboBox *_whichPlasmaPlot;
     QCheckBox *_clearPlasmaPlot;
-    QVBoxLayout *_setupPlotLayout;
-    QVBoxLayout *_plotTargetLayout;
     // timing
     QLineEdit *_numberTimeBins;
     QSpinBox *_binIndex;
@@ -132,7 +142,8 @@ private:
     QLineEdit *_plasmaFracTar;
     QLineEdit *_noiseTar;
     QLineEdit *_challengeTime;
-    QLineEdit *_challengeMag;
+    QLabel *_challengeMagLabel;
+    QLineEdit *_challengeMagPercent;
     // target region analysis
     QComboBox *_modelType;
     QComboBox *_weightType;
@@ -144,9 +155,15 @@ private:
     QLabel *_tau2RefAnalysisLabel;
     QLabel *_tau4AnalysisLabel;
     QLabel *_DVAnalysisLabel;
-    QCheckBox *_fitk4CheckBox;
-    QCheckBox *_fitDVCheckBox;
     QCheckBox *_fitChallenge;
+
+    QRadioButton *_fit2ParRadioButton;
+    QRadioButton *_fitk4RadioButton;
+    QRadioButton *_fitk2RefRadioButton;
+    QRadioButton *_fitk4k2RefRadioButton;
+    QRadioButton *_fitDVRadioButton;
+    QPushButton *_runSimulationAndAnalysis;
+
     QLineEdit *_parSearchStart;
     QLineEdit *_parSearchEnd;
     QLineEdit *_parSearchStep;
@@ -212,7 +229,6 @@ private:
     void updatePlasmaGraph();
     void updateBasisGraph();
     void updateTargetGraph();
-    void updateAICvsTau4Graph();
     void enablePlasmaMatching(bool state);
     void addSimulationRR(plotData *whichPlot);
     void addFitRR(plotData *whichPlot);
@@ -235,9 +251,10 @@ private:
     void enableComboBoxItem(QComboBox *comboBox, int itemNumber, bool enable);
     inline bool realDataAvailable() {return _dataTable.size() != 0 && _dataRefRegion->count() != 0;}
     inline bool analyzeRealData() {return _analyzeRealData->isChecked();}
+    void calculateForwardTau4andTau2Ref();
 
     // getters
-    double getChallengeMagFromAnalysis();
+    double getChallengeMagPercentFromAnalysis(double &deltaBPAbs);
     inline bool simStartsFromPlasma()    {return _simulationStartingPoint->currentIndex() == simStart_fromPlasma;}
     inline bool simStartsFromPlasmaFit() {return _simulationStartingPoint->currentIndex() == simStart_fromPlasmaFit;}
     inline bool simStartsFromDataFit()   {return _simulationStartingPoint->currentIndex() == simStart_fromDataFit;}
@@ -250,10 +267,9 @@ private slots:
     void changedNumberThreads(int indexInBox);
     void showPlasma();
     void showRR();
-    void showBasisTarget();
     void showBasis();
     void showTarget();
-    void showAICvsTau4();
+    void showAICPlot();
     inline void changedDataReferenceRegion() {updateAllGraphs();}
     inline void changedDataTargetRegion()    {updateAllGraphs();}
     void clickedAnalyzeStimulation(bool state);
@@ -291,6 +307,7 @@ private slots:
     void changedPlasmaFracTar();
     void changedNoiseTar();
 
+    void runSimulationAndAnalysis();
     void calculateRRMatch();
 
     void changedIgnoreString();
@@ -298,6 +315,7 @@ private slots:
     void changedTau4Analysis();
     void changedDVAnalysis();
     void changedCheckBoxFitk4(bool state);
+    void changedCheckBoxFitk2Ref(bool state);
     void changedCheckBoxFitDV(bool state);
     void changedCheckBoxChallenge(bool state);
     void changedParSearchStart();
@@ -313,6 +331,7 @@ private slots:
     void clearBPndCurves();
     void changedVersusBPndGraphs();
     void changedVersusTau4Graphs();
+    void updateAICvsTau4Graph();
 
     void changedTau4High();
     void changedTau4Step();
@@ -338,6 +357,27 @@ public slots:
     void finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errChall, dMatrix tau2Ref,
                                           dMatrix errTau4, dMatrix errDV, double sigma2);
     void finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errChall, dMatrix AIC, double sigma2);
+    void globalk4FitterUpdate(dPoint4D tau4Tau2RefDVAIC);
+    void globalk4FitterFinished(int mode);
 };
+
+class globalk4Fitter : public QObject, public QRunnable
+{
+    Q_OBJECT   // this can create a problem of "missing vtable"; fix by "run qmake" from Qt Creator build menu
+public:
+    globalk4Fitter(double tau4, dVector tau2RefVector, dVector DVVector, dVector ROI, const PETRTM petRTM);
+    void run(); // if public, it can be run directly in the same thread to test thread safety
+private:
+    double _tau4;
+    dVector _tau2RefVector;
+    dVector _DVVector;
+    dVector _ROI;     // [nTime]
+    PETRTM _petRTM;
+signals:
+    void update(dPoint4D tau4Tau2RefDVAIC);
+    void finished(int mode);
+public slots:
+};
+
 
 #endif // SIMWINDOW_H

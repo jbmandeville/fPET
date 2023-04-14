@@ -60,7 +60,7 @@ void lieDetectorBPnd::run()
             errBPnd[jBP][jSample] = percentageError(guess,BP0);
 
             // update the challenge error
-            double truth = _simulator.getChallengeMag();
+            double truth = _simulator.getChallengeMagPercent();
             guess = getChallengeMagFromAnalysis();
             errChall[jBP][jSample] = guess - truth;
 
@@ -156,7 +156,7 @@ void lieDetectorTau4::run()
             errBPnd[jBP][jSample] = percentageError(guess,truth);
 
             // update the challenge error
-            truth = _simulator.getChallengeMag();
+            truth = _simulator.getChallengeMagPercent();
             guess = getChallengeMagFromAnalysis();
             errChall[jBP][jSample] = guess - truth;
 

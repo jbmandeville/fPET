@@ -168,7 +168,8 @@ public:
     inline double getNoiseRef()     {return _noiseRef;}
     inline double getNoiseTar()     {return _noiseTar;}
     inline double getChallengeTime(){return _challengeTime;}
-    inline double getChallengeMag() {return _deltaBPPercent;}
+    inline double getChallengeMagPercent() {return _deltaBPPercent;}
+    inline double getChallengeMagAbs() {return _BP0 * _deltaBPPercent/100.;}
     inline double getPlasmaPercentRef(){return _percentPlasmaRef;}
     inline double getPlasmaPercentTar(){return _percentPlasmaTar;}
     // concentations
@@ -179,6 +180,7 @@ public:
     inline double getCpCoarse(int iTime)  {return _CpBinned[iTime];}
     inline double getCrCoarse(int iTime)  {return _CrBinned[iTime];}
     inline double getCtCoarse(int iTime)  {return _CtBinned[iTime];}
+    inline dVector getCtCoarse() {return _CtBinned;}
     inline dVector getCrCoarse()     {return _CrBinned;}
     inline dVector getTimeCourse()   {return _timeCoarse;}
 
