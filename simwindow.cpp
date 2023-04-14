@@ -1602,7 +1602,6 @@ void SimWindow::showBasis()
 }
 void SimWindow::showTarget()
 {
-    qInfo() << "showTarget";
     FUNC_ENTER;
     _plotBasis->getPlotSurface()->setVisible(false);
     _plotTarget->getPlotSurface()->setVisible(true);
@@ -1611,7 +1610,6 @@ void SimWindow::showTarget()
 }
 void SimWindow::showAICPlot()
 {
-    qInfo() << "showAICPlot";
     FUNC_ENTER;
     _plotBasis->getPlotSurface()->setVisible(false);
     _plotTarget->getPlotSurface()->setVisible(false);
@@ -2001,7 +1999,6 @@ void SimWindow::updateBasisGraph()
 
 void SimWindow::updateAICvsTau4Graph()
 {
-    qInfo() << "updateAICvsTau4Graph enter";
     FUNC_ENTER;
     bool sweep = _fitk4RadioButton->isChecked() ||
             _fitk2RefRadioButton->isChecked()   ||
@@ -2033,7 +2030,6 @@ void SimWindow::updateAICvsTau4Graph()
     _plotAIC->conclude(0,true);
     _plotAIC->plotDataAndFit(true);
     _plotAIC->setPositionTracer(0,bestValue);
-    qInfo() << "updateAICvsTau4Graph exit";
 }
 
 void SimWindow::runSimulationAndAnalysis()
@@ -2048,16 +2044,12 @@ void SimWindow::updateAllGraphs()
 {
     FUNC_ENTER;
     // run the simulation
-    qInfo() << "run simulation";
     _simulator.run();
-    qInfo() << "run simulation done";
 
     updatePlasmaGraph();
     setReferenceRegionForAnalysis();
     updateReferenceGraph();
-    qInfo() << "analyze TAC";
     analyzeTAC();
-    qInfo() << "analyze TAC done";
     updateAICvsTau4Graph();
     updateTargetGraph();
     updateBasisGraph();  // update basis graph AFTER target graph, because basis functions use target curve
@@ -3477,7 +3469,6 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
                                                  dMatrix tau2Ref, dMatrix errTau4, dMatrix errDV,
                                                  double sigma2)
 {
-    qInfo() << "finishedLieDetectorBPndOneThread enter";
     FUNC_ENTER;
     static int nThreadsFinished=0;
     static double sigma2Sum=0.;
@@ -3508,7 +3499,6 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
     sigma2Sum += sigma2;
     if ( nThreadsFinished == _nThreads )
     {
-        qInfo() << "all threads finished";
         _progressBar->reset();
         _progressBar->setMaximum(1);  // indicates that the bar is available
         sigma2Sum /= static_cast<double>(_nThreads);
@@ -3517,7 +3507,6 @@ void SimWindow::finishedLieDetectorBPndOneThread(dMatrix errBPnd, dMatrix errCha
         sigma2Sum = 0.;
         finishedLieDetectorBPndAllThreads();
     }
-    qInfo() << "finishedLieDetectorBPndOneThread exit";
 }
 
 void SimWindow::finishedLieDetectorTau4OneThread(dMatrix errBPnd, dMatrix errChall, dMatrix AIC, double sigma2)
@@ -3581,12 +3570,9 @@ double SimWindow::calculateStDev(double mean, dVector vec)
 
 void SimWindow::finishedLieDetectorBPndAllThreads()
 {
-    qInfo() << "finishedLieDetectorBPndAllThreads enter";
     FUNC_ENTER;
     int nBP0Values = _BP0Vector.size();
     int nSamples   = _nThreads * _numberSimulationsPerThread;
-
-    qInfo() << "nSamples" << nSamples;
 
     dVector errBP, errChall, tau2Ref, errTau4, errDV, errBPSTDEV, errChallSTDEV, tau2RefSTDEV, errTau4STDEV, errDVSTDEV;
     // determine the means
@@ -3594,7 +3580,6 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
     {
         FUNC_INFO << "** errTau4Matrix" << _errTau4Matrix[jValue];
 
-        qInfo() << "calc mean using" << _errBPndMatrix[jValue].size() << "samples for value" << jValue;
         errBP.append(calculateMean(_errBPndMatrix[jValue]));
         errChall.append(calculateMean(_errChallMatrix[jValue]));
         tau2Ref.append(calculateMean(_tau2RefMatrix[jValue]));
@@ -3671,7 +3656,6 @@ void SimWindow::finishedLieDetectorBPndAllThreads()
     _plotErrDVVsBPnd->plotDataAndFit(true);
 
     _progressBar->reset();
-    qInfo() << "finishedLieDetectorBPndAllThreads exit";
 }
 
 void SimWindow::finishedLieDetectorTau4AllThreads()
