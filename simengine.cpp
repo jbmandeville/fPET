@@ -49,53 +49,11 @@ void simEngine::updateFineSamples()
     }
 }
 
-void simEngine::setCrFit(dVector CrFitCoarse)
-{
-    FUNC_ENTER;
-    if ( _nBins != CrFitCoarse.size() )
-    {
-        FUNC_INFO << _nBins << CrFitCoarse.size();
-        qFatal("Error in simEngine::setCrFit - the # of coarse bins should match the # in the fit vector");
-    }
-    _CrFitBinned = CrFitCoarse;
-
-    tk::spline spline;
-    spline.set_points(_timeCoarse,_CrFitBinned);    // currently it is required that X is already sorted
-
-    // fine scale: interpolate LOESS using spline
-    int nTimeFine = getNumberTimeBinsFine();
-    _CrFit.clear();
-    for (int jTime=0; jTime<nTimeFine; jTime++)
-        _CrFit.append(qMax(0.,spline(_timeFine[jTime])));
-
-    _CrFitDot.fill(0.,_CrFit.size());
-    // Calculate the derivative
-    for (int jBin=0; jBin<_CrFit.size(); jBin++)
-    {
-        if ( jBin != 0 )
-            _CrFitDot[jBin] = (_CrFit[jBin] - _CrFit[jBin-1]) / _dtFine[jBin];
-        else
-            _CrFitDot[jBin] = 0.;
-    }
-}
-
 void simEngine::run()
 {
     FUNC_ENTER;
-    if ( _simStartingPoint == simStart_fromPlasma )
-    {
-        generatePlasmaTAC();
-        generateReferenceTAC();
-    }
+    generatePlasmaTAC();
     generateTargetTAC();
-}
-void simEngine::generateTargetTAC()
-{
-    FUNC_ENTER;
-    if ( _SRTM )
-        generateTargetSRTM();
-    else
-        generateTargetFRTM();
 }
 
 void simEngine::generatePlasmaTAC()
@@ -112,140 +70,65 @@ void simEngine::generatePlasmaTAC()
         magInfusion = _magBolus * exp(1) * _tauBolus / _KBol;
     for ( int jt=0; jt<nTime; jt++)
     {
-        double time = _timeFine[jt];
-        double plasmaInput;
-        if ( time < _KBolDelay )
-            plasmaInput = 0.          + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
-        else
-            plasmaInput = magInfusion + _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
-        if ( jt != 0. )
+        double time = _timeFine[jt] - _timeCoarse[0];
+        double plasmaInput = 0.;
+        if ( time > 0. )
         {
+            plasmaInput = _magBolus * time/_tauBolus * qExp(1.-time/_tauBolus);
+            if ( time > _KBolDelay ) plasmaInput += magInfusion;
             double dCpdt_fast  = _fracFast      * plasmaInput - _kFast * Cp_fast;
             double dCpdt_slow  = (1.-_fracFast) * plasmaInput - _kSlow * Cp_slow;
             Cp_fast += dCpdt_fast * _dtFine[jt];
             Cp_slow += dCpdt_slow * _dtFine[jt];
+            _Cp.append(Cp_fast + Cp_slow);
         }
-        _Cp.append(Cp_fast + Cp_slow);
+        else
+            _Cp.append(0.);
     }
     _CpBinned = downSample(_Cp);
 }
 
-void simEngine::generateReferenceTAC()
+void simEngine::generateTargetTAC()
 {
     FUNC_ENTER;
-    // dCr_dt = K1 * Cp - k2 * Cr;
-    // Cp = ( dCr_dt + k2 * Cr) / K1;
-
-    int nTime = _dtFine.size();
-    double Cr = 0.;
-    _Cr.clear();  _CrDot.clear();
-    for ( int jt=0; jt<nTime; jt++)
-    {
-        double Cp = _Cp[jt];
-        if ( jt != 0. )
-        {
-            double dCrdt = _K1Ref * Cp - _k2Ref * Cr;
-            Cr += dCrdt * _dtFine[jt];
-            _CrDot.append(dCrdt);
-        }
-        // Cp is conc(tracer)/volume(blood), whereas Cr is conc(tracer)/volume(tissue), so multiple Cp by volume(blood)/volume(tissue)
-        _Cr.append(Cr + _percentPlasmaRef/100. * Cp);
-    }
-
-    // Downsample the TAC and add Noise
-    _CrBinned = downSample(_Cr);
-    addNoise(_noiseRef, _CrBinned);
-}
-
-void simEngine::generateTargetSRTM()
-{
-    FUNC_ENTER;
-    // dCt_dt = K1 * Cp - k2a * Ct
+    // dCf_dt(t) = K1 * Cp(t) - [k2 + k3(t)] * Cf(t) = K1 * Cp(t) - k3(0)*[1+k2/k3(0)+dk3(t)/k3(0)] * Cf(t)
+    // dCb_dt = k3(t) * Cf = k3(0) * [1 + dk3(t)/k3(0)] * Cf
+    // parameters:
+    // K1, k3(0), k2/k3(0), dk3(t)/k3(0)
 
     // Derived quantities: update tissue properties
-    _K1  = _R1 * _K1Ref;
-    double k2  = _R1 * _k2Ref / _DV;
-    double k2a = k2 / (1. + _BP0);
+    double k2  = _k2_div_k3 * _k3;
 
-    double Ct=0.;
-    int nTime = _dtFine.size();
-    _Ct.clear();
-    for ( int jt=0; jt<nTime; jt++)
-    {
-        int iDisplacementTime = static_cast<int>(_challengeTime / _dtFine[jt]);
-        bool postChallenge = (jt > iDisplacementTime);
-        if ( postChallenge && _deltaBPPercent != 0. )
-        {
-            double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
-            k2a = k2 / (1. + BP1);
-        }
-        dVector Cp;
-        if ( _simStartingPoint == simStart_fromPlasma )
-        {
-            FUNC_INFO << "start from plasma";
-            Cp = _Cp;
-        }
-        else
-        {
-            FUNC_INFO << "start from fit";
-            int nTime = _CrFit.size();
-            Cp.resize(nTime);
-            for ( int jTime=0; jTime<nTime; jTime++ )
-                Cp[jTime] = _k2Ref/_K1Ref * _CrFit[jTime] + _CrFitDot[jTime]/_K1Ref;
-        }
-        if ( jt > 0 )
-        {
-            double dCtdt = _K1 * Cp[jt] - k2a * Ct ;
-            Ct += dCtdt * _dtFine[jt];
-        }
-        _Ct.append(Ct + _percentPlasmaTar/100. * Cp[jt]);
-    }
-
-    // Downsample the TAC and add Noise
-    _CtBinned = downSample(_Ct);
-    addNoise(_noiseTar, _CtBinned);
-}
-
-void simEngine::generateTargetFRTM()
-{
-    FUNC_ENTER;
-    // dCb_dt = k3 * Cf - koff * Cb = kon * Bavail * Cf - koff * Cb
-    // dCf_dt = K1 * Cp + koff * Cb - (k2+k3)*Cf
-
-    // Derived quantities: update tissue properties
-    _K1  = _R1 * _K1Ref;
-    double k2  = _R1 * _k2Ref / _DV;
-    _k3  = _BP0  * _k4;
-
-    double k3=_k3;
-    double Cf=0.;  double Cb=0.;  double lastCr=0.;
+    double k3;
+    double Cf=0.;  double Cb=0.;
     int nTime = _dtFine.size();
     _Cf.clear();  _Cb.clear();  _Ct.clear();
-    FUNC_INFO << "sizes" << _dtFine.size() << _CrFit.size();
-    FUNC_INFO << "_simStartingPoint" << _simStartingPoint;
     for ( int jt=0; jt<nTime; jt++)
     {
         FUNC_INFO << "jt" << jt;
-        int iDisplacementTime = static_cast<int>(_challengeTime / _dtFine[jt]);
-        bool postChallenge = (jt > iDisplacementTime);
-        if ( postChallenge && _deltaBPPercent != 0. )
+        int iOnset1  = static_cast<int>(_challengeOnsetTime1  / _dtFine[jt]);
+        int iOffset1 = static_cast<int>(_challengeOffsetTime1 / _dtFine[jt]);
+        int iOnset2  = static_cast<int>(_challengeOnsetTime2  / _dtFine[jt]);
+        int iOffset2 = static_cast<int>(_challengeOffsetTime2 / _dtFine[jt]);
+        bool duringChallenge1 = (jt > iOnset1 && jt < iOffset1);
+        bool duringChallenge2 = (jt > iOnset2 && jt < iOffset2);
+        if ( duringChallenge1 && _dk3_percent1 != 0. )
         {
-            double BP1 = _BP0 * (1. - _deltaBPPercent/100.);
-            k3 = BP1 * _k4;
+            double k3total = _k3 * (1. + _dk3_percent1/100.);
+            k3 = k3total;
         }
+        else if ( duringChallenge2 && _dk3_percent2 != 0. )
+        {
+            double k3total = _k3 * (1. + _dk3_percent2/100.);
+            k3 = k3total;
+        }
+        else
+            k3 = _k3;
         if ( jt > 0 )
         {
-            double dCfdt;
-            if ( _simStartingPoint == simStart_fromPlasma )
-                dCfdt = _K1 * _Cp[jt] + _k4 * Cb - (k2 + k3) * Cf;
-            else
-            {
-                double Cr = _CrFit[jt];
-                double dCrdt = (Cr - lastCr)/_dtFine[jt];
-                dCfdt = _K1/_K1Ref * ( _k2Ref * Cr + dCrdt) + _k4 * Cb - (k2 + k3) * Cf;
-                lastCr = Cr;
-            }
-            double dCbdt = k3 * Cf - _k4 * Cb;
+            FUNC_INFO << "k3[" << jt << "] =" << k3;
+            double dCfdt = _K1 * _Cp[jt] - (k2 + k3) * Cf;
+            double dCbdt = k3 * Cf;
             Cf += dCfdt * _dtFine[jt];
             Cb += dCbdt * _dtFine[jt];
         }
@@ -279,12 +162,14 @@ dVector simEngine::downSample(dVector original)
 void simEngine::addNoise(double noiseScale, dVector &timeVector)
 { // add noise to time vector AFTER down-sampling
     FUNC_ENTER;
+//    double decayTimeConstant = 28.9;
+    double decayTimeConstant = 151.;
     int nTime = timeVector.size();
     for ( int jt=0; jt<nTime; jt++)
     {
         // noise proportional to Cr * exp(t/T_1/2)
         double time = _timeCoarse[jt];
-        double noiseMag = qSqrt(noiseScale * timeVector[jt] * exp(time/28.9));
+        double noiseMag = qSqrt(noiseScale * timeVector[jt] * exp(time/decayTimeConstant));
         double noise = GaussianRandomizer(noiseMag, 2.*noiseMag);
         timeVector[jt] += noise;
     }

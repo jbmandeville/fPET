@@ -1,5 +1,5 @@
 QT += gui printsupport core
-DEFINES += QT_NO_DEBUG_OUTPUT
+#DEFINES += QT_NO_DEBUG_OUTPUT
 
 LIBS += -L"../util/3rdparty/nifticlib-2.0.0/znzlib" -L"../3rdparty/zlib-1.2.5/lib" -lznz -lz
 
@@ -31,11 +31,10 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-        liedetector.cpp \
         main.cpp \
         simengine.cpp \
         simwindow.cpp \
-        petrtm.cpp \
+        fmriglm.cpp \
         simanalyzer.cpp \
         generalglm.cpp \
         plot.cpp \
@@ -49,10 +48,9 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
 HEADERS += \
-    liedetector.h \
     simengine.h \
     simwindow.h \
-    petrtm.h \
+    fmriglm.h \
     simanalyzer.h \
     generalglm.h \
     plot.h \
