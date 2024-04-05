@@ -1,5 +1,5 @@
 QT += gui printsupport core
-#DEFINES += QT_NO_DEBUG_OUTPUT
+DEFINES += QT_NO_DEBUG_OUTPUT
 
 LIBS += -L"../util/3rdparty/nifticlib-2.0.0/znzlib" -L"../3rdparty/zlib-1.2.5/lib" -lznz -lz
 
