@@ -5,8 +5,10 @@
         <file>My-Icons/rescaleGraph.png</file>
         <file>My-Icons/calculator.png</file>
         <file>My-Icons/eraser.png</file>
-        <file>My-Icons/positron.png</file>
         <file>My-Icons/openFile.png</file>
         <file>My-Icons/cursor-cross.png</file>
+        <file>My-Icons/retirement.png</file>
+        <file>My-Text/returns.txt</file>
+        <file>My-Text/brackets.txt</file>
     </qresource>
 </RCC>
